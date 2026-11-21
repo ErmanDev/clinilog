@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Clinilog User Guide</title>
+<style>
+  @page { size: A4; margin: 15mm 15mm 18mm 15mm; }
+  :root {
+    --teal: #0f766e; --teal-dark: #115e59; --teal-light: #ccfbf1; --brand: #6ec5d3;
+    --ink: #0f172a; --muted: #475569; --line: #e2e8f0; --amber: #b45309; --amber-bg: #fffbeb;
+    --red: #b91c1c; --red-bg: #fef2f2; --blue-bg: #f0f9ff;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.5; margin: 0; }
+  h1, h2, h3, h4 { line-height: 1.25; margin: 0; }
+  h2 { font-size: 20pt; color: var(--teal-dark); break-before: page; padding-bottom: 6px; border-bottom: 3px solid var(--brand); margin-bottom: 14px; }
+  h2 .num { color: var(--brand); margin-right: 6px; }
+  h3 { font-size: 13.5pt; color: var(--teal); margin: 18px 0 6px; break-after: avoid; }
+  h4 { font-size: 11pt; margin: 12px 0 4px; break-after: avoid; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+  ol.steps > li { counter-increment: step; position: relative; padding-left: 32px; margin: 7px 0; break-inside: avoid; page-break-inside: avoid; }
+  ol.steps > li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--teal); color: #fff; font-weight: 700; font-size: 9.5pt; text-align: center; line-height: 22px; }
+  b, strong { font-weight: 600; }
+  .ui { font-weight: 600; color: var(--teal-dark); }
+  kbd { font-family: inherit; font-size: 9pt; border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: #f8fafc; }
+  code { font-family: Consolas, monospace; font-size: 9.5pt; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+  figure { display: block; margin: 10px 0 14px; break-inside: avoid; page-break-inside: avoid; text-align: center; }
+  figure img { display: block; margin: 0 auto; max-width: 88%; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 1px 3px rgb(15 23 42 / 0.12); }
+  figure.small img { max-width: 56%; }
+  figure.tiny img { max-width: 38%; }
+  figcaption { font-size: 9pt; color: var(--muted); margin-top: 5px; }
+  .box { border-radius: 8px; padding: 9px 12px; margin: 10px 0; break-inside: avoid; border: 1px solid; }
+  .box > :first-child { margin-top: 0; }
+  .box > :last-child { margin-bottom: 0; }
+  .tip { background: var(--blue-bg); border-color: #bae6fd; }
+  .note { background: var(--amber-bg); border-color: #fde68a; }
+  .warn { background: var(--red-bg); border-color: #fecaca; }
+  .box .label { font-weight: 700; margin-right: 4px; }
+  .tip .label { color: #0369a1; } .note .label { color: var(--amber); } .warn .label { color: var(--red); }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 9.8pt; break-inside: avoid; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #f0fdfa; color: var(--teal-dark); font-weight: 600; }
+  td.c, th.c { text-align: center; }
+  .yes { color: var(--teal); font-weight: 700; } .no { color: #94a3b8; }
+  .who { display: inline-block; font-size: 8.5pt; font-weight: 700; padding: 1px 8px; border-radius: 999px; margin-left: 8px; vertical-align: middle; letter-spacing: .02em; }
+  .who.staff { background: #e0f2fe; color: #075985; } .who.admin { background: #fef3c7; color: #92400e; } .who.all { background: var(--teal-light); color: var(--teal-dark); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .two figure img { max-width: 100%; }
+  .keep { break-inside: avoid; }
+
+  /* Cover */
+  .cover { height: 262mm; display: flex; flex-direction: column; justify-content: space-between; background: linear-gradient(160deg, #0f766e 0%, #134e4a 100%); color: #fff; border-radius: 10px; padding: 26mm 18mm 18mm; }
+  .cover .brand { display: flex; align-items: center; gap: 14px; }
+  .cover .brand span.tile { background: #fff; border-radius: 16px; padding: 10px; display: inline-flex; }
+  .cover .brand img { width: 54px; height: 54px; }
+  .cover .brand b { font-size: 26pt; letter-spacing: -.01em; }
+  .cover h1 { font-size: 38pt; font-weight: 700; letter-spacing: -.02em; }
+  .cover .sub { font-size: 15pt; color: #ccfbf1; margin-top: 10px; max-width: 140mm; }
+  .cover .meta { font-size: 10.5pt; color: #ccfbf1; line-height: 1.7; }
+  .cover .meta b { color: #fff; }
+
+  /* Contents */
+  .toc { break-before: page; }
+  .toc h2 { break-before: avoid; }
+  .toc ol { list-style: none; padding: 0; margin: 0; }
+  .toc li { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; border-bottom: 1px dotted #cbd5e1; font-size: 11pt; }
+  .toc li .t { flex: 1; }
+  .toc li .pg { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .toc li.sub { padding-left: 22px; font-size: 10pt; color: var(--muted); }
+
+  /* Flow diagram */
+  .flow { display: flex; flex-direction: column; align-items: center; gap: 0; margin: 12px 0; break-inside: avoid; }
+  .flow .step { width: 116mm; border: 2px solid var(--brand); background: #f0fdfa; border-radius: 10px; padding: 8px 12px; text-align: center; }
+  .flow .step b { display: block; color: var(--teal-dark); font-size: 11pt; }
+  .flow .step span { font-size: 9.2pt; color: var(--muted); }
+  .flow .arrow { height: 22px; width: 2px; background: var(--brand); position: relative; }
+  .flow .arrow::after { content: ""; position: absolute; bottom: -2px; left: -5px; border: 6px solid transparent; border-top-color: var(--brand); border-bottom: 0; }
+  .flow .split { display: flex; gap: 10mm; }
+  .flow .split .step { width: 53mm; }
+  .flow .split .step.alt { border-style: dashed; background: #fff; }
+  .flow .tag { font-size: 8.5pt; font-weight: 700; color: var(--teal); margin-bottom: 2px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; break-inside: avoid; }
+  .card h4 { margin-top: 0; color: var(--teal-dark); }
+</style>
+</head>
+<body>
+
+<!-- ===================== COVER ===================== -->
+<section class="cover">
+  <div class="brand"><span class="tile"><img src="img/clinilog-mark.png" alt="" /></span><b>Clinilog</b></div>
+  <div>
+    <h1>User Guide</h1>
+    <p class="sub">How to use Clinilog every day: for clinic nurses (staff) and clinic administrators.</p>
+  </div>
+  <div class="meta">
+    Prepared for <b>Valencia National High School</b> · School Clinic<br />
+    Clinilog version <b>0.1.0</b> · November 2026<br />
+    Student health information is protected under <b>RA 10173</b> (Data Privacy Act of 2012).
+  </div>
+</section>
+
+<!-- ===================== CONTENTS ===================== -->
+<section class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><span class="t">1. About Clinilog</span><span class="pg">{{p:s1}}</span></li>
+    <li><span class="t">2. Getting started: install, open and log in</span><span class="pg">{{p:s2}}</span></li>
+    <li><span class="t">3. The everyday clinic flow</span><span class="pg">{{p:s3}}</span></li>
+    <li><span class="t">4. Dashboard</span><span class="pg">{{p:s4}}</span></li>
+    <li><span class="t">5. Students</span><span class="pg">{{p:s5}}</span></li>
+    <li><span class="t">6. Clinic Visits</span><span class="pg">{{p:s6}}</span></li>
+    <li><span class="t">7. Search</span><span class="pg">{{p:s7}}</span></li>
+    <li><span class="t">8. Reports</span><span class="pg">{{p:s8}}</span></li>
+    <li><span class="t">9. Administrator: first-time setup</span><span class="pg">{{p:s9}}</span></li>
+    <li><span class="t">10. User Accounts (admin)</span><span class="pg">{{p:s10}}</span></li>
+    <li><span class="t">11. Subscription (admin)</span><span class="pg">{{p:s11}}</span></li>
+    <li><span class="t">12. Activity Log (admin)</span><span class="pg">{{p:s12}}</span></li>
+    <li><span class="t">13. Settings: sections and medicines (admin)</span><span class="pg">{{p:s13}}</span></li>
+    <li><span class="t">14. Working without internet (offline mode)</span><span class="pg">{{p:s14}}</span></li>
+    <li><span class="t">15. Plans, limits and an expired subscription</span><span class="pg">{{p:s15}}</span></li>
+    <li><span class="t">16. Rules for each field</span><span class="pg">{{p:s16}}</span></li>
+    <li><span class="t">17. Troubleshooting and questions</span><span class="pg">{{p:s17}}</span></li>
+    <li><span class="t">18. Privacy and good practice</span><span class="pg">{{p:s18}}</span></li>
+    <li><span class="t">19. Quick reference</span><span class="pg">{{p:s19}}</span></li>
+  </ol>
+  <div class="box tip" style="margin-top:18px">
+    <p><span class="label">How to read this guide.</span> Sections 1–8 are for <b>everyone</b>. Sections 9–13 are for <b>administrators</b> only. Each section starts with a badge:
+    <span class="who all">ALL USERS</span> <span class="who staff">STAFF</span> <span class="who admin">ADMIN</span>.
+    The screenshots use sample students, not real records.</p>
+  </div>
+</section>
+
+<!-- ===================== 1 ===================== -->
+<h2 id="s1"><span class="num">1.</span>About Clinilog</h2>
+<p>Clinilog is the school clinic's records system. Clinic staff use it to keep <b>student health profiles</b>, record <b>clinic visits</b> (complaint, treatment and medicines given), search past records and print <b>reports</b>. Students don't use the app; they tell the nurse their complaint and the nurse records it.</p>
+<p>Records are kept safely on Clinilog's server, so every clinic PC sees the same, up-to-date information. If the internet goes down, nurses can still record new visits; they upload automatically when the connection returns (see section 14).</p>
+
+<h3>Two kinds of users</h3>
+<p>What you can see and do depends on the account you log in with, not on the computer.</p>
+<table>
+  <tr><th style="width:44%">What you can do</th><th class="c">Staff (nurse)</th><th class="c">Admin</th></tr>
+  <tr><td>See the Dashboard</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+  <tr><td>Find, add and edit students</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+  <tr><td>Record clinic visits</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+  <tr><td>Edit a visit</td><td class="c">Only visits you recorded</td><td class="c yes">Any visit</td></tr>
+  <tr><td>Search records and view reports (print / save as PDF)</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+  <tr><td>Delete a student or a visit</td><td class="c no">–</td><td class="c yes">✓</td></tr>
+  <tr><td>Manage user accounts (add, disable, reset passwords)</td><td class="c no">–</td><td class="c yes">✓</td></tr>
+  <tr><td>Renew or change the subscription plan</td><td class="c no">–</td><td class="c yes">✓</td></tr>
+  <tr><td>View the Activity Log</td><td class="c no">–</td><td class="c yes">✓</td></tr>
+  <tr><td>Manage sections and medicines (Settings)</td><td class="c no">–</td><td class="c yes">✓</td></tr>
+</table>
+
+<h3>The sidebar</h3>
+<div class="two">
+  <div class="card"><h4>Staff sees 5 items</h4>
+    <ol><li><b>Dashboard</b>: today at a glance</li><li><b>Students</b>: student records</li><li><b>Clinic Visits</b>: record and view visits</li><li><b>Search</b>: find records</li><li><b>Reports</b>: summaries, print, PDF</li></ol></div>
+  <div class="card"><h4>Admin sees 9 items</h4>
+    <p style="margin:0 0 4px">The same 5, plus:</p>
+    <ol start="6"><li><b>User Accounts</b>: who can log in</li><li><b>Subscription</b>: plan and renewal</li><li><b>Activity Log</b>: who did what</li><li><b>Settings</b>: sections and medicines</li></ol></div>
+</div>
+<p>At the bottom of the sidebar you'll always see the <b>connection card</b> (Online / Offline and how many visits are waiting to upload), your name and role, and <span class="ui">Log out</span>.</p>
+
+<!-- ===================== 2 ===================== -->
+<h2 id="s2"><span class="num">2.</span>Getting started: install, open and log in <span class="who all">ALL USERS</span></h2>
+
+<h3>Installing Clinilog on a clinic PC</h3>
+<ol class="steps">
+  <li>Copy the installer <code>Clinilog_0.1.0_x64-setup.exe</code> to the PC and double-click it.</li>
+  <li>If Windows shows <b>"Windows protected your PC"</b>, click <span class="ui">More info</span>, then <span class="ui">Run anyway</span>. (This appears because the installer isn't signed with a paid certificate; it's safe.)</li>
+  <li>Follow the installer. When it finishes, open <b>Clinilog</b> from the Start menu or the desktop shortcut.</li>
+</ol>
+<p>The app is already set up for your school: there is nothing to type in during installation. Install it on every clinic PC that needs it; all of them share the same records.</p>
+
+<h3>The Clinilog window</h3>
+<p>Clinilog opens <b>full screen</b>. There is no Windows title bar; use the two small buttons in the <b>top-right corner</b> instead:</p>
+<ul>
+  <li><b>–</b> &nbsp;Minimize: hides Clinilog to the taskbar (click its icon to bring it back).</li>
+  <li><b>×</b> &nbsp;Close: exits Clinilog. If visits are still waiting to upload, it asks first; they stay safely on the PC.</li>
+</ul>
+
+<h3>Logging in</h3>
+<figure><img src="img/01-login.png" alt="" /><figcaption>The login screen. The left side shows a short animation of the clinic flow.</figcaption></figure>
+<ol class="steps">
+  <li>Wait until any <b>"Connecting to server…"</b> message disappears. The first time each day it can take <b>up to about a minute</b> while the server wakes up. This is normal.</li>
+  <li>Type your <b>Username</b> (capital letters don't matter: <code>Nurse_Joy</code> = <code>nurse_joy</code>).</li>
+  <li>Type your <b>Password</b>. Passwords <b>are</b> case-sensitive. Clinilog warns you if <kbd>Caps Lock</kbd> is on. Click the eye icon to show or hide what you typed.</li>
+  <li>Click <span class="ui">Log in</span>. The button stays grey until both boxes are filled.</li>
+</ol>
+<div class="box note"><p><span class="label">5 wrong passwords lock the account for 5 minutes.</span> A countdown shows how long to wait. An administrator can unlock it sooner by resetting the password (section 10).</p></div>
+<div class="box tip"><p><span class="label">Forgot your password?</span> Ask your clinic administrator to reset it. Staff can't reset their own password.</p></div>
+
+<h3>Logging out</h3>
+<p>Click <span class="ui">Log out</span> at the bottom of the sidebar when you finish or leave the PC. If visits are still waiting to upload, Clinilog tells you first; they are kept on the PC and upload the next time you log in while online.</p>
+
+<!-- ===================== 3 ===================== -->
+<h2 id="s3"><span class="num">3.</span>The everyday clinic flow <span class="who all">ALL USERS</span></h2>
+<p>This is what happens when a student comes to the clinic. The next sections explain each screen in detail.</p>
+<div class="flow">
+  <div class="step"><b>1 · A student comes to the clinic</b><span>The student tells the nurse their name or LRN and what's wrong.</span></div>
+  <div class="arrow"></div>
+  <div class="step"><b>2 · Find the student</b><span>Students page, or type the name / LRN straight into the New visit form.</span></div>
+  <div class="arrow"></div>
+  <div class="split">
+    <div class="step"><div class="tag">Already registered</div><b>Open their record</b><span>Click <i>Record visit</i> on their profile.</span></div>
+    <div class="step alt"><div class="tag">First clinic visit ever</div><b>Add the student</b><span>Students → Add student (LRN, name, birthdate, section).</span></div>
+  </div>
+  <div class="arrow"></div>
+  <div class="step"><b>3 · Record the visit</b><span>Complaint, treatment and any medicines given. Date, time and "attended by" fill in automatically.</span></div>
+  <div class="arrow"></div>
+  <div class="step"><b>4 · Save</b><span>Online: saved on the server immediately. Offline: saved on this PC and uploaded automatically later.</span></div>
+  <div class="arrow"></div>
+  <div class="step"><b>5 · Follow up any time</b><span>Dashboard and Clinic Visits show today's visits; the student's profile shows their full history.</span></div>
+  <div class="arrow"></div>
+  <div class="step"><b>6 · End of month / year</b><span>Reports: visits per month and most common complaints. Print or save as PDF.</span></div>
+</div>
+<div class="box tip"><p><span class="label">Fastest way to record a visit:</span> click <span class="ui">New visit</span> on the Dashboard, type the student's name or LRN in the Student box, pick them from the list, fill in the complaint and treatment, and click <span class="ui">Save visit</span>.</p></div>
+
+<!-- ===================== 4 ===================== -->
+<h2 id="s4"><span class="num">4.</span>Dashboard <span class="who all">ALL USERS</span></h2>
+<p>The Dashboard is the first page after logging in. It shows the day at a glance.</p>
+<figure><img src="img/02-dashboard-staff.png" alt="" /><figcaption>Dashboard as a staff member (5 sidebar items).</figcaption></figure>
+<ul>
+  <li><b>Visits today</b>: how many students visited the clinic today. Click the number to open today's visits.</li>
+  <li><b>Plan</b>: your school's current subscription plan and until when it's valid.</li>
+  <li><b>Signed in as</b>: your name and role.</li>
+  <li><b>Recent visits</b>: the 10 latest visits. Click any row to open it, or <span class="ui">View all</span> for the full list.</li>
+  <li><span class="ui">New visit</span> (top right) starts recording a visit straight away.</li>
+</ul>
+<p>The Dashboard refreshes itself every minute. If visits are waiting to upload (offline), a <b>Waiting to upload</b> box appears here too.</p>
+
+<!-- ===================== 5 ===================== -->
+<h2 id="s5"><span class="num">5.</span>Students <span class="who all">ALL USERS</span></h2>
+<p>Every student who visits the clinic has one record: their LRN, name, gender, birthdate and section, plus their full visit history.</p>
+<figure><img src="img/03-students.png" alt="" /><figcaption>The Students list.</figcaption></figure>
+
+<h3>Finding a student</h3>
+<ul>
+  <li>Type in the search box: part of a <b>name</b> in either order (<code>juan dela</code> or <code>dela cruz, juan</code>) or the <b>first digits of the LRN</b>. The list updates as you type.</li>
+  <li>Use <b>All sections</b> to show one section only.</li>
+  <li>Click a student's name or row to open their profile.</li>
+  <li>The bottom of the list shows how many students there are and the page buttons. On the Basic plan it also shows the plan limit (500 students).</li>
+</ul>
+
+<h3>Adding a student</h3>
+<ol class="steps">
+  <li>Click <span class="ui">Add student</span>.</li>
+  <li>Type the <b>LRN</b>: exactly 12 digits. The counter shows how many you've typed (for example <i>8/12 digits</i>). As soon as all 12 are in, Clinilog checks whether that LRN is already registered.</li>
+  <li>Fill in <b>First name</b>, <b>Middle name</b> (optional) and <b>Last name</b>. Letters (including ñ and accents), spaces, hyphens, apostrophes and periods are allowed.</li>
+  <li>Choose the <b>Gender</b> and the <b>Birthdate</b> (the calendar only allows ages 4–25).</li>
+  <li>Choose the <b>Grade &amp; section</b>. If the section isn't in the list, ask your administrator to add it (Settings).</li>
+  <li>Click <span class="ui">Save student</span>. The button stays grey until every field is valid; any problem is shown in red under the field.</li>
+</ol>
+<figure><img src="img/05-student-form.png" alt="" /><figcaption>A completed Add student form. "Not yet registered in your school" confirms the LRN is free.</figcaption></figure>
+<figure><img src="img/04-lrn-crop.png" alt="" /><figcaption>If the LRN is already used, Clinilog says who has it (click the name to open that student) and won't save.</figcaption></figure>
+<div class="box note"><p><span class="label">Possible duplicate.</span> If another student has the <b>same first name, last name and birthdate</b>, Clinilog shows a <b>Possible duplicate</b> message listing them. Check it's really a different person, then click <span class="ui">Save anyway</span>; or <span class="ui">Cancel</span> and use the existing record.</p></div>
+
+<h3>A student's profile</h3>
+<figure><img src="img/06-student-detail.png" alt="" /><figcaption>Profile with age (calculated from the birthdate) and full visit history.</figcaption></figure>
+<ul>
+  <li><span class="ui">Record visit</span> opens a new visit with this student already filled in.</li>
+  <li><span class="ui">Edit</span> changes their details (same rules as adding).</li>
+  <li><b>Visit history</b> lists every clinic visit, newest first. Click a visit to open it.</li>
+  <li><span class="ui">Delete</span> <span class="who admin">ADMIN</span>: removes the student after you confirm. A student who has <b>any clinic visits can't be deleted</b>, so health records are never lost by accident.</li>
+</ul>
+<div class="box tip"><p><span class="label">Note:</span> each time someone opens a student's profile, it's recorded in the Activity Log (section 12).</p></div>
+
+<!-- ===================== 6 ===================== -->
+<h2 id="s6"><span class="num">6.</span>Clinic Visits <span class="who all">ALL USERS</span></h2>
+<p>A visit records one trip to the clinic: who came, the complaint, the treatment, medicines given, the date and time, and who attended.</p>
+<figure><img src="img/07-visits.png" alt="" /><figcaption>The Clinic Visits page shows today's visits by default.</figcaption></figure>
+<ul>
+  <li>Use the <b>Date</b> box to see another day, <span class="ui">Today</span> to go back, or <span class="ui">All dates</span> for everything (newest first).</li>
+  <li>Click any visit to open its details.</li>
+</ul>
+
+<h3>Recording a new visit</h3>
+<ol class="steps">
+  <li>Click <span class="ui">New visit</span> (on this page, the Dashboard, or a student's profile).</li>
+  <li><b>Student</b>: type part of the name or the LRN, then click the right student in the list (or use the arrow keys and <kbd>Enter</kbd>). To change your choice, click the <b>×</b> on the selected student.</li>
+  <li>The <b>date and time</b> and <b>Attended by</b> (you) are filled in automatically when you save.</li>
+  <li><b>Complaint</b>: what the student says is wrong (at least 3 characters).</li>
+  <li><b>Treatment</b>: what was done (for example "Rested 30 minutes, gave water").</li>
+  <li><b>Medicines given</b> (optional): click <span class="ui">Add medicine</span>, choose the medicine and type the quantity (a whole number from 1 to 100; the unit, e.g. <i>tablet</i>, is shown next to it). Add more lines if needed; the bin icon removes a line.</li>
+  <li>Click <span class="ui">Save visit</span>.</li>
+</ol>
+<figure><img src="img/08-new-visit.png" alt="" /><figcaption>A new visit ready to save, with one medicine.</figcaption></figure>
+<figure><img src="img/09-visit-detail.png" alt="" /><figcaption>After saving: the visit details.</figcaption></figure>
+
+<h3>Editing or deleting a visit</h3>
+<ul>
+  <li><span class="ui">Edit</span> changes the complaint, treatment and medicines. Staff can edit <b>only visits they recorded</b>; administrators can edit any visit.</li>
+  <li>The student, date/time and "attended by" can't be changed. If a visit was recorded for the wrong student, an administrator deletes it and it's recorded again.</li>
+  <li><span class="ui">Delete</span> <span class="who admin">ADMIN</span>: removes the visit after you confirm.</li>
+</ul>
+
+<!-- ===================== 7 ===================== -->
+<h2 id="s7"><span class="num">7.</span>Search <span class="who all">ALL USERS</span></h2>
+<p>Search finds students or clinic visits using filters. Choose what to find with the tabs at the top: <span class="ui">Students</span> or <span class="ui">Clinic visits</span>.</p>
+<figure><img src="img/10-search-basic.png" alt="" /><figcaption>Searching clinic visits by student name. On the Basic plan, Advanced filters are locked.</figcaption></figure>
+<h3>Basic search (all plans)</h3>
+<ul>
+  <li><b>Student name or LRN</b>: same as on the Students page.</li>
+  <li><b>Section</b>: limit results to one section.</li>
+</ul>
+<p>Results appear as you type. <span class="ui">Clear filters</span> resets everything. If you open a result and go back, your search is still there.</p>
+
+<h3>Advanced filters (Premium plan)</h3>
+<ul>
+  <li><b>Grade</b>: students or visits from one grade level.</li>
+  <li><b>Visit date from / to</b>: visits within a date range (both days included).</li>
+  <li><b>Complaint has words</b>: visits whose complaint contains <b>all</b> the words you type, in any order (for example <code>headache</code>, or <code>fever headache</code>).</li>
+</ul>
+<figure><img src="img/20-search-premium.png" alt="" /><figcaption>On Premium: every visit with "headache" in the complaint.</figcaption></figure>
+<figure class="small"><img src="img/11-upgrade-locked-staff-dialog.png" alt="" /><figcaption>Clicking a locked Premium item explains what Premium adds. Staff are asked to talk to their admin; admins see a <i>See plans</i> button.</figcaption></figure>
+
+<!-- ===================== 8 ===================== -->
+<h2 id="s8"><span class="num">8.</span>Reports <span class="who all">ALL USERS</span></h2>
+<p>Reports summarise clinic activity for a month or a whole year, ready to print or save as a PDF.</p>
+<figure><img src="img/12-reports-basic.png" alt="" /><figcaption>A monthly report (November) with the visits-per-month chart for the year.</figcaption></figure>
+<ol class="steps">
+  <li>Choose the <b>Year</b> and the <b>Month</b> (or <i>Whole year</i>).</li>
+  <li>Read the summary: <b>Visits</b>, <b>Students seen</b> and the <b>Most common complaint</b> for that period.</li>
+  <li><b>Visits per month</b> always shows the whole year; the chosen month is highlighted. Point at a bar to see its number; the table under the chart lists every month.</li>
+  <li><b>Most common complaints</b> lists the words used most often in complaints (for example "headache"), with how many visits mentioned each.</li>
+  <li>Click <span class="ui">Print</span> to print, or <span class="ui">Save as PDF</span> and choose where to save the file.</li>
+</ol>
+<div class="box tip"><p><span class="label">How complaints are counted:</span> Clinilog looks at the words in each complaint, ignoring filler words like "since" or "ang". Two-word complaints such as "stomach ache" are kept together, and words that appear in only one visit aren't listed. Short, consistent complaints ("Headache", "Fever and headache") give the clearest reports.</p></div>
+<h3>Detailed reports (Premium plan)</h3>
+<p>On Premium the report also includes <b>Visits by grade and section</b>, <b>Medicine usage</b> (how much of each medicine was given) and <b>Frequent visitors</b> (the students with the most visits).</p>
+<figure><img src="img/22-reports-detailed.png" alt="" /><figcaption>Part of a detailed report: medicine usage and frequent visitors.</figcaption></figure>
+<p>The printed or PDF report shows only the report itself, with the school name, period, who prepared it and when, without the sidebar or buttons.</p>
+
+<!-- ===================== 9 ===================== -->
+<h2 id="s9"><span class="num">9.</span>Administrator: first-time setup <span class="who admin">ADMIN</span></h2>
+<p>When Clinilog is first set up, the school already has one administrator account (<code>admin</code>), a 12-month Basic plan, 12 sample sections (Grades 7–12) and 6 common medicines. Before the clinic starts using it:</p>
+<ol class="steps">
+  <li><b>Log in</b> as the administrator with the password your Clinilog provider gave you.</li>
+  <li><b>Settings → Sections</b>: make the list match your school's real sections. Rename, add or delete the samples (section 13).</li>
+  <li><b>Settings → Medicines</b>: make the list match the clinic's real stock, with the right unit for each (tablet, capsule, sachet, ml…).</li>
+  <li><b>User Accounts</b>: add an account for each nurse with the role <b>Staff</b> (section 10). Give each person their password privately.</li>
+  <li>Optional: if you prefer a personal admin login, add your own <b>Admin</b> account, log in with it and disable the shared <code>admin</code> account.</li>
+  <li><b>Subscription</b>: check the plan and its end date (section 11).</li>
+  <li>Install Clinilog on each clinic PC (section 2). Students are then added as they come to the clinic.</li>
+</ol>
+<figure><img src="img/14-dashboard-admin.png" alt="" /><figcaption>The administrator's Dashboard, with the four extra admin pages in the sidebar.</figcaption></figure>
+
+<!-- ===================== 10 ===================== -->
+<h2 id="s10"><span class="num">10.</span>User Accounts <span class="who admin">ADMIN</span></h2>
+<p>Each person who uses Clinilog should have their <b>own account</b>, so the records show who attended each visit.</p>
+<figure><img src="img/15-user-accounts.png" alt="" /><figcaption>User Accounts on the Basic plan: 2 of 2 active accounts used, so <i>Add user</i> is unavailable until a slot is freed or the plan is upgraded.</figcaption></figure>
+
+<h3>Adding a user</h3>
+<ol class="steps">
+  <li>Click <span class="ui">Add user</span>.</li>
+  <li>Enter the <b>Full name</b> and a <b>Username</b> (4–30 letters, numbers or underscore, for example <code>nurse_ana</code>).</li>
+  <li>Choose the <b>Role</b>: <b>Staff</b> for nurses, <b>Admin</b> for people who manage the system.</li>
+  <li>Type a <b>Password</b> (at least 8 characters with a letter and a number) and type it again in <b>Confirm password</b>.</li>
+  <li>Click <span class="ui">Add user</span>, then tell the person their username and password in person.</li>
+</ol>
+<figure class="small"><img src="img/19-add-user-dialog.png" alt="" /><figcaption>The Add user form.</figcaption></figure>
+
+<h3>Managing existing users</h3>
+<table>
+  <tr><th style="width:24%">Button</th><th>What it does</th></tr>
+  <tr><td><span class="ui">Edit</span></td><td>Change the person's full name or role. (Usernames can't be changed.)</td></tr>
+  <tr><td><span class="ui">Reset password</span></td><td>Set a new password for someone who forgot theirs. It also unlocks an account locked after 5 wrong passwords. You can reset your own password the same way.</td></tr>
+  <tr><td><span class="ui">Disable</span></td><td>Stops the person from logging in (for example someone who left). They are logged out straight away. Their past visits stay in the records. Disabling frees a slot on your plan.</td></tr>
+  <tr><td><span class="ui">Enable</span></td><td>Lets a disabled person log in again (needs a free slot on your plan).</td></tr>
+</table>
+<div class="box note"><p><span class="label">Safety rules.</span> You can't disable your own account or remove your own admin role, and the school always keeps at least one active admin, so nobody can lock the school out by mistake.</p></div>
+<div class="box tip"><p><span class="label">Plan limits.</span> Only <b>active</b> accounts count: Basic allows <b>2</b>, Premium allows <b>10</b>.</p></div>
+
+<!-- ===================== 11 ===================== -->
+<h2 id="s11"><span class="num">11.</span>Subscription <span class="who admin">ADMIN</span></h2>
+<p>This page shows your school's plan and lets you renew, upgrade or switch plans.</p>
+<figure><img src="img/16-subscription.png" alt="" /><figcaption>Current subscription (top) and the plans you can choose (bottom).</figcaption></figure>
+<div class="box warn"><p><span class="label">Demo checkout.</span> Payments in this version are a <b>demonstration</b>: no money is charged and no card or account details are asked for. Prices shown are samples.</p></div>
+<h3>Renewing, upgrading or switching</h3>
+<ol class="steps">
+  <li>Choose <b>Monthly</b> or <b>Yearly</b> at the top of the plans.</li>
+  <li>On a plan card, click <span class="ui">Renew …</span> (your current plan), <span class="ui">Upgrade to Premium</span> or <span class="ui">Switch to Basic</span>.</li>
+  <li>Check the summary (plan, amount and when it starts) and choose a payment method.</li>
+  <li>Click <span class="ui">Confirm demo payment</span>. A receipt confirms the new plan, and it applies immediately for everyone.</li>
+</ol>
+<div class="two">
+  <figure><img src="img/17-checkout-dialog.png" alt="" /><figcaption>The checkout.</figcaption></figure>
+  <figure><img src="img/18-receipt-dialog.png" alt="" /><figcaption>The receipt.</figcaption></figure>
+</div>
+<table>
+  <tr><th style="width:38%">If you…</th><th>The new period…</th></tr>
+  <tr><td>Renew the same plan while it's still active</td><td>Is added on: it starts the day after the current one ends.</td></tr>
+  <tr><td>Switch plans (Basic ↔ Premium)</td><td>Starts today and replaces the old plan.</td></tr>
+  <tr><td>Renew after the plan has expired</td><td>Starts today.</td></tr>
+</table>
+<p>Clinilog warns everyone when the plan ends within 14 days. If it expires, records can still be <b>viewed</b> but not changed until it's renewed (section 15). The page also shows how many students and active accounts you're using compared with your plan's limits.</p>
+
+<!-- ===================== 12 ===================== -->
+<h2 id="s12"><span class="num">12.</span>Activity Log <span class="who admin">ADMIN</span></h2>
+<p>The Activity Log is a permanent record of who did what, as required for handling student health data.</p>
+<figure><img src="img/23-activity-log.png" alt="" /><figcaption>Newest activity first.</figcaption></figure>
+<p>It records every time a <b>student</b> or <b>clinic visit</b> record is <b>viewed, created, changed or deleted</b>, every change to a <b>user account</b>, and every <b>subscription</b> purchase.</p>
+<ul>
+  <li>Filter by <b>User</b>, <b>Action</b> (Viewed / Created / Changed / Deleted), <b>Record</b> type and a date range; <span class="ui">Clear</span> removes the filters.</li>
+  <li>Click a record's name to open it. <i>Deleted record</i> means it has since been removed.</li>
+  <li>The log can't be edited or deleted from the app.</li>
+</ul>
+
+<!-- ===================== 13 ===================== -->
+<h2 id="s13"><span class="num">13.</span>Settings: sections and medicines <span class="who admin">ADMIN</span></h2>
+<h3>Sections</h3>
+<figure><img src="img/24-settings-sections.png" alt="" /><figcaption>Sections grouped by grade, with how many students are in each.</figcaption></figure>
+<ul>
+  <li><b>Add</b>: choose the grade, type the section name and click <span class="ui">Add section</span>.</li>
+  <li><b>Rename</b>: click the pencil, type the new name and press <kbd>Enter</kbd> (or the check mark). <kbd>Esc</kbd> cancels.</li>
+  <li><b>Delete</b>: click the bin and confirm. A section that still has students can't be deleted; move its students to another section first (edit each student).</li>
+</ul>
+<h3>Medicines</h3>
+<figure><img src="img/25-settings-medicines.png" alt="" /><figcaption>The medicine list staff choose from when recording a visit.</figcaption></figure>
+<ul>
+  <li><b>Add</b>: type the name (for example <i>Paracetamol 500 mg</i>) and the unit (<i>tablet</i>, <i>capsule</i>, <i>sachet</i>, <i>ml</i>…), then click <span class="ui">Add medicine</span>.</li>
+  <li><b>Edit</b>: click the pencil to change the name or unit.</li>
+  <li><b>Delete</b>: possible only for medicines never given in a visit. A medicine already used can't be deleted, but you can rename it.</li>
+</ul>
+
+<!-- ===================== 14 ===================== -->
+<h2 id="s14"><span class="num">14.</span>Working without internet (offline mode) <span class="who all">ALL USERS</span></h2>
+<p>Clinilog keeps working for the most important job, recording clinic visits, when the internet is down.</p>
+<div class="two keep">
+  <figure><img src="img/02-sync-card-online.png" alt="" /><figcaption>Connected.</figcaption></figure>
+  <figure><img src="img/13-sync-card-offline.png" alt="" /><figcaption>No connection: 1 visit is waiting.</figcaption></figure>
+</div>
+<p>The <b>connection card</b> at the bottom of the sidebar shows whether Clinilog can reach the server and how many of <i>your</i> visits are waiting to upload. <span class="ui">Sync now</span> checks again immediately.</p>
+<figure><img src="img/13-offline-top.png" alt="" /><figcaption>While offline, a yellow banner explains it, and saved visits wait in <i>Waiting to upload</i>.</figcaption></figure>
+
+<h3>What works offline</h3>
+<ul>
+  <li><b>Recording new visits</b>: they are saved on the PC (encrypted) and upload automatically when the connection returns, keeping the time they were recorded and the nurse who recorded them.</li>
+  <li><b>Choosing students and medicines</b> in the New visit form: Clinilog searches a copy of the lists saved on the PC.</li>
+  <li>Other pages (Students, Reports, Search, admin pages) need the server and show a connection message until it's back.</li>
+</ul>
+<h3>Logging in while offline</h3>
+<p>You can log in without internet <b>only</b> if your account has logged in on that PC while online before, and you did not log out since (closing the app is fine). If you log out, the saved lists are cleared and your next login needs the internet.</p>
+<h3>When the connection returns</h3>
+<ul>
+  <li>Waiting visits upload by themselves within about 30 seconds, or click <span class="ui">Upload now</span> / <span class="ui">Sync now</span>.</li>
+  <li>If the server can't accept a visit (for example the student was deleted meanwhile), it is marked <b>needs attention</b> with the reason. Fix the cause and click <span class="ui">Try again</span>, or <span class="ui">Discard</span> it.</li>
+  <li>Visits recorded by another nurse on the same PC upload when that nurse logs in again, so each visit stays credited to the right person.</li>
+</ul>
+<div class="box note"><p><span class="label">Keep waiting visits safe.</span> Before logging out or closing, check the card. Clinilog asks first if visits are waiting; they are never thrown away, but they only upload when the person who recorded them is logged in and online.</p></div>
+<p>If the server can't be reached at all, Clinilog keeps using your school's last known plan for up to <b>7 days</b>. After that it becomes view-only until it reconnects.</p>
+
+<!-- ===================== 15 ===================== -->
+<h2 id="s15"><span class="num">15.</span>Plans, limits and an expired subscription <span class="who all">ALL USERS</span></h2>
+<table>
+  <tr><th>Feature</th><th class="c">Basic</th><th class="c">Premium</th></tr>
+  <tr><td>Student records</td><td class="c">Up to 500</td><td class="c">Unlimited</td></tr>
+  <tr><td>Active user accounts</td><td class="c">2</td><td class="c">Up to 10</td></tr>
+  <tr><td>Search</td><td class="c">Name / LRN and section</td><td class="c">+ grade, date range and complaint words</td></tr>
+  <tr><td>Reports</td><td class="c">Visits per month, most common complaints</td><td class="c">+ by grade &amp; section, medicine usage, frequent visitors</td></tr>
+  <tr><td>Server backups</td><td class="c">Weekly</td><td class="c">Daily</td></tr>
+  <tr><td>Sample price (demo)</td><td class="c">₱500 / month · ₱5,000 / year</td><td class="c">₱1,500 / month · ₱15,000 / year</td></tr>
+</table>
+<p>Premium-only items stay <b>visible but locked</b> on Basic, marked with a lock and a <b>Premium</b> badge. Clicking one explains what Premium adds.</p>
+<h3>If the subscription expires</h3>
+<ul>
+  <li>Everyone sees a red banner: <i>"Your subscription has expired."</i></li>
+  <li>All records can still be <b>viewed</b>, searched and reported on. Nothing is deleted.</li>
+  <li>Adding or changing records is paused until an administrator renews (<span class="ui">Renew now</span> in the banner).</li>
+  <li>Administrators can still reset passwords and disable accounts while it's expired.</li>
+</ul>
+
+<!-- ===================== 16 ===================== -->
+<h2 id="s16"><span class="num">16.</span>Rules for each field <span class="who all">ALL USERS</span></h2>
+<p>Clinilog checks every field as you type (a red message under the field, and the Save button stays grey) and checks again on the server. Spaces at the start and end are ignored.</p>
+<table>
+  <tr><th style="width:26%">Field</th><th>Rule</th></tr>
+  <tr><td>LRN</td><td>Required. Exactly 12 digits (no spaces or dashes). Must not already be used by another student in your school.</td></tr>
+  <tr><td>First / last name</td><td>Required, 1–50 characters: letters (ñ and accents allowed), spaces, hyphen (-), apostrophe (') and period (.).</td></tr>
+  <tr><td>Middle name</td><td>Optional; same characters as above.</td></tr>
+  <tr><td>Gender</td><td>Required; choose from the list.</td></tr>
+  <tr><td>Birthdate</td><td>Required; a real date, not in the future, giving an age of 4 to 25.</td></tr>
+  <tr><td>Grade &amp; section</td><td>Required; choose from the list (admins manage it in Settings).</td></tr>
+  <tr><td>Visit date and time</td><td>Filled in automatically when the visit is saved.</td></tr>
+  <tr><td>Complaint</td><td>Required, 3–500 characters.</td></tr>
+  <tr><td>Treatment</td><td>Required, 1–500 characters.</td></tr>
+  <tr><td>Medicine quantity</td><td>Whole number from 1 to 100. Up to 20 medicines per visit, each listed once.</td></tr>
+  <tr><td>Username</td><td>4–30 letters, numbers or underscore. Unique in your school. Capital letters don't matter when logging in.</td></tr>
+  <tr><td>Password</td><td>At least 8 characters with at least one letter and one number. Capital letters do matter.</td></tr>
+</table>
+
+<!-- ===================== 17 ===================== -->
+<h2 id="s17"><span class="num">17.</span>Troubleshooting and questions <span class="who all">ALL USERS</span></h2>
+<table>
+  <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
+  <tr><td>"Connecting to server…" for a long time</td><td>The server wakes up the first time each day; wait up to about a minute. If it then says it can't reach the server, check the PC's internet and click <span class="ui">Try again</span>.</td></tr>
+  <tr><td>"Too many failed attempts"</td><td>Wait for the countdown (5 minutes), or ask an administrator to reset your password.</td></tr>
+  <tr><td>Forgot password</td><td>Ask an administrator: User Accounts → <span class="ui">Reset password</span>.</td></tr>
+  <tr><td>"Your account is no longer active"</td><td>An administrator disabled your account. Ask them to enable it.</td></tr>
+  <tr><td>"This installation has no school ID"</td><td>The app wasn't installed from the school's installer. Reinstall it with the installer from your Clinilog provider.</td></tr>
+  <tr><td>Save button stays grey</td><td>A field still has a problem; look for the red message under a field.</td></tr>
+  <tr><td>"Already registered to …" on the LRN</td><td>That student already exists. Click their name to open their record instead of adding them again.</td></tr>
+  <tr><td>"Possible duplicate"</td><td>Another student has the same name and birthdate. Check, then <span class="ui">Save anyway</span> only if it's a different person.</td></tr>
+  <tr><td>Can't delete a student</td><td>They have clinic visits on record; health records are kept.</td></tr>
+  <tr><td>Can't delete a section or medicine</td><td>The section still has students, or the medicine was used in a visit. Move the students first, or rename the medicine.</td></tr>
+  <tr><td>A lock or <b>Premium</b> badge</td><td>That feature is part of the Premium plan. An administrator can upgrade under Subscription.</td></tr>
+  <tr><td>Add student / Add user is unavailable</td><td>The plan limit is reached (500 students or 2 accounts on Basic), or the subscription has expired.</td></tr>
+  <tr><td>Visits stay in "Waiting to upload"</td><td>Check the internet, then <span class="ui">Upload now</span>. If one says it needs attention, read the reason, then <span class="ui">Try again</span> or <span class="ui">Discard</span>.</td></tr>
+  <tr><td>"Your password or account changed since you logged in"</td><td>Log out and log in again with your current password. Waiting visits are kept and will upload.</td></tr>
+  <tr><td>"Windows protected your PC" when installing</td><td>Click <span class="ui">More info</span> → <span class="ui">Run anyway</span>.</td></tr>
+</table>
+
+<!-- ===================== 18 ===================== -->
+<h2 id="s18"><span class="num">18.</span>Privacy and good practice <span class="who all">ALL USERS</span></h2>
+<p>Clinic records are <b>sensitive personal information</b> under the Data Privacy Act of 2012 (RA 10173). Clinilog protects them (encrypted connections, hashed passwords, an encrypted offline copy, and an activity log), but good habits matter too:</p>
+<ul>
+  <li><b>Use only your own account.</b> Never share passwords; the records show who did what.</li>
+  <li><b>Log out</b>, or lock Windows with <kbd>⊞ Win</kbd> + <kbd>L</kbd>, whenever you leave the PC.</li>
+  <li><b>Open records only when needed.</b> Every view of a student or visit is recorded in the Activity Log.</li>
+  <li><b>Handle printouts and PDFs carefully.</b> Store them securely and shred paper copies you no longer need.</li>
+  <li><b>Keep the student list accurate.</b> Search before adding a student to avoid duplicates, and correct details when they change.</li>
+  <li><b>Administrators:</b> disable accounts of people who leave the clinic straight away, and check the Activity Log from time to time.</li>
+</ul>
+
+<!-- ===================== 19 ===================== -->
+<h2 id="s19"><span class="num">19.</span>Quick reference</h2>
+<div class="two">
+  <div class="card">
+    <h4>Nurse: every clinic visit <span class="who staff">STAFF</span></h4>
+    <ol>
+      <li><span class="ui">New visit</span> (Dashboard or Clinic Visits).</li>
+      <li>Type the student's name or LRN → pick them.<br /><i>Not found?</i> Students → <span class="ui">Add student</span> first.</li>
+      <li>Complaint → Treatment → <span class="ui">Add medicine</span> if any.</li>
+      <li><span class="ui">Save visit</span>.</li>
+    </ol>
+    <h4>Nurse: other everyday tasks</h4>
+    <ul>
+      <li>Student's history: Students → click the name.</li>
+      <li>Fix your visit: open it → <span class="ui">Edit</span>.</li>
+      <li>Monthly summary: Reports → month → <span class="ui">Print</span> / <span class="ui">Save as PDF</span>.</li>
+      <li>Offline? Keep recording visits; check the sidebar card later.</li>
+      <li>Leaving the PC: <span class="ui">Log out</span>.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Administrator tasks <span class="who admin">ADMIN</span></h4>
+    <ul>
+      <li><b>New nurse:</b> User Accounts → <span class="ui">Add user</span> → Role: Staff.</li>
+      <li><b>Forgotten password / locked out:</b> User Accounts → <span class="ui">Reset password</span>.</li>
+      <li><b>Someone leaves:</b> User Accounts → <span class="ui">Disable</span>.</li>
+      <li><b>New school year sections:</b> Settings → Sections.</li>
+      <li><b>New medicine in stock:</b> Settings → Medicines.</li>
+      <li><b>Wrong visit:</b> open it → <span class="ui">Delete</span>, then record it again.</li>
+      <li><b>Renew or upgrade:</b> Subscription → plan → checkout.</li>
+      <li><b>Who looked at a record?</b> Activity Log → filter.</li>
+    </ul>
+    <h4>Window buttons</h4>
+    <ul><li><b>–</b> minimize · <b>×</b> close (top-right corner)</li></ul>
+  </div>
+</div>
+<div class="box tip" style="margin-top:16px"><p><span class="label">Need help?</span> Contact your Clinilog provider. Tell them what you were doing and copy the exact message you saw.</p></div>
+
+</body>
+</html>
