@@ -1,8 +1,9 @@
-import { AlertCircle, Eye, EyeOff, Loader2, Plus, RefreshCw, WifiOff } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, Loader2, RefreshCw, WifiOff } from "lucide-react";
 import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
 import { api, asCmdError, type ConfigInfo } from "../lib/api";
 import { useSession } from "../lib/session";
 import { WindowControls } from "../components/WindowControls";
+import logoMark from "../assets/clinilog-mark.png";
 
 /** How many times to ping the server before giving up (each try waits up to 20 s). */
 const MAX_CONNECT_TRIES = 4;
@@ -102,8 +103,8 @@ export function LoginPage() {
       </div>
       <section className="hidden w-[42%] flex-col justify-between bg-teal-800 p-10 text-white lg:flex">
         <div className="flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-white text-teal-800" aria-hidden>
-            <Plus className="size-7" strokeWidth={3} />
+          <span className="flex size-11 items-center justify-center rounded-xl bg-white p-1.5" aria-hidden>
+            <img src={logoMark} alt="" className="size-full" draggable={false} />
           </span>
           <span className="text-2xl font-bold tracking-tight">Clinilog</span>
         </div>
@@ -118,7 +119,8 @@ export function LoginPage() {
 
       <section className="flex flex-1 items-center justify-center p-8">
         <div className="w-full max-w-sm">
-          <div className="mb-8 lg:hidden">
+          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
+            <img src={logoMark} alt="" className="size-9" draggable={false} />
             <span className="text-2xl font-bold tracking-tight text-teal-800">Clinilog</span>
           </div>
           <h1 className="text-2xl font-semibold">Log in</h1>

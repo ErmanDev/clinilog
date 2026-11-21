@@ -1,4 +1,5 @@
-import { LogOut, Plus } from "lucide-react";
+import { LogOut } from "lucide-react";
+import logoMark from "../assets/clinilog-mark.png";
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { planLabel } from "../lib/format";
@@ -29,9 +30,7 @@ export function AppLayout() {
     <div className="flex h-full print:block print:h-auto">
       <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white print:hidden">
         <div className="flex items-center gap-2.5 px-5 py-5">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-teal-700 text-white" aria-hidden>
-            <Plus className="size-6" strokeWidth={3} />
-          </span>
+          <img src={logoMark} alt="" className="size-9 shrink-0" draggable={false} />
           <div className="min-w-0">
             <p className="text-base font-bold leading-tight tracking-tight">Clinilog</p>
             <p className="truncate text-xs text-slate-500" title={session.school.name}>
