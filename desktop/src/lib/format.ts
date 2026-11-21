@@ -46,6 +46,13 @@ export function genderLabel(g: string): string {
   return g === "female" ? "Female" : g === "male" ? "Male" : g;
 }
 
+const pesoFmt = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 });
+
+/** "₱1,500" */
+export function peso(amount: number): string {
+  return pesoFmt.format(amount);
+}
+
 export function planLabel(plan: string): string {
   return plan === "premium" ? "Premium" : "Basic";
 }

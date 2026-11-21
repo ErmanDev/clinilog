@@ -19,7 +19,7 @@ use crate::{
 };
 
 const MAX_PAGE_SIZE: i64 = 100;
-const TABLES: &[&str] = &["students", "clinic_visits", "users"];
+const TABLES: &[&str] = &["students", "clinic_visits", "users", "subscriptions"];
 const ACTIONS: &[&str] = &["view", "create", "update", "delete"];
 
 #[derive(Deserialize)]
@@ -100,6 +100,10 @@ pub async fn list(State(state): State<AppState>, admin: AuthUser, Query(q): Quer
                   WHEN 'users' THEN
                     (SELECT u2.full_name || ' (' || u2.username || ')'
                        FROM users u2 WHERE u2.id = a.record_id AND u2.school_id = a.school_id)
+                  WHEN 'subscriptions' THEN
+                    (SELECT initcap(sb.plan) || ' plan, ' || to_char(sb.start_date, 'Mon DD, YYYY')
+                            || ' – ' || to_char(sb.end_date, 'Mon DD, YYYY') || ' (demo checkout)'
+                       FROM subscriptions sb WHERE sb.id = a.record_id AND sb.school_id = a.school_id)
                 END AS record_label,
                 count(*) OVER () AS total
            FROM activity_log a

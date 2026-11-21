@@ -19,6 +19,7 @@ const TABLES: Record<ActivityEntry["table_name"], string> = {
   students: "Student",
   clinic_visits: "Clinic visit",
   users: "User account",
+  subscriptions: "Subscription",
 };
 
 export function ActivityLogPage() {
@@ -201,7 +202,9 @@ function RecordLink({ entry }: { entry: ActivityEntry }) {
       ? `/students/${entry.record_id}`
       : entry.table_name === "clinic_visits"
         ? `/visits/${entry.record_id}`
-        : "/users";
+        : entry.table_name === "users"
+          ? "/users"
+          : "/subscription";
   return (
     <Link to={to} className="font-medium text-teal-800 hover:underline">
       {entry.record_label}

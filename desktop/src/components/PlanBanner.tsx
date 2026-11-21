@@ -1,5 +1,6 @@
 import { AlertTriangle, CloudOff, Info } from "lucide-react";
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { formatDate } from "../lib/format";
 import { useSession } from "../lib/session";
 
@@ -31,7 +32,13 @@ export function PlanBanner() {
   }
 
   if (info.read_only) {
-    const renew = isAdmin ? "Contact your Clinilog provider to renew." : "Ask your clinic admin to renew.";
+    const renew = isAdmin ? (
+      <Link to="/subscription" className="font-semibold underline">
+        Renew now
+      </Link>
+    ) : (
+      "Ask your clinic admin to renew."
+    );
     const what = info.status === "none" ? "Your school has no active subscription." : "Your subscription has expired.";
     return (
       <Banner tone="danger" icon={<AlertTriangle className="size-4" />}>

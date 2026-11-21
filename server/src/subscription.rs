@@ -4,13 +4,13 @@
 
 use axum::{extract::State, Json};
 use chrono::NaiveDate;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{auth::AuthUser, error::AppResult, AppState};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "lowercase")]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 pub enum Plan {
@@ -100,7 +100,9 @@ pub async fn current(db: &PgPool, school_id: Uuid) -> AppResult<SubscriptionInfo
         "SELECT plan, status, start_date, end_date
            FROM subscriptions
           WHERE school_id = $1
-          ORDER BY end_date DESC
+          -- An active row wins over a cancelled one that happens to end later
+          -- (switching plans cancels the old row).
+          ORDER BY (status = 'active') DESC, end_date DESC
           LIMIT 1",
     )
     .bind(school_id)
@@ -166,4 +168,166 @@ pub async fn require_advanced_search(db: &PgPool, school_id: Uuid) -> AppResult<
 /// `GET /subscription` — any signed-in user. The app calls this on launch.
 pub async fn get(State(state): State<AppState>, user: AuthUser) -> AppResult<Json<SubscriptionInfo>> {
     Ok(Json(current(&state.db, user.school_id).await?))
+}
+
+// ---------- Mock checkout (no real payment) ----------
+//
+// Clinilog has no payment provider. Admins "buy" a plan through a demo checkout:
+// no money moves and no payment details are collected. Prices are samples.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Term {
+    Monthly,
+    Yearly,
+}
+
+impl Term {
+    fn months(self) -> u32 {
+        match self {
+            Term::Monthly => 1,
+            Term::Yearly => 12,
+        }
+    }
+}
+
+/// Sample prices in Philippine pesos. Change them here; the app shows whatever the server sends.
+fn price_php(plan: Plan, term: Term) -> i64 {
+    match (plan, term) {
+        (Plan::Basic, Term::Monthly) => 500,
+        (Plan::Basic, Term::Yearly) => 5_000,
+        (Plan::Premium, Term::Monthly) => 1_500,
+        (Plan::Premium, Term::Yearly) => 15_000,
+    }
+}
+
+const PAYMENT_METHODS: &[(&str, &str)] =
+    &[("gcash", "GCash"), ("maya", "Maya"), ("card", "Credit / debit card"), ("bank", "Bank transfer")];
+
+#[derive(Serialize)]
+pub struct PlanOption {
+    pub plan: Plan,
+    pub monthly_php: i64,
+    pub yearly_php: i64,
+    pub limits: Limits,
+    pub features: Features,
+}
+
+#[derive(Serialize)]
+pub struct PlansResponse {
+    pub plans: Vec<PlanOption>,
+    /// `[{ id, label }]`
+    pub payment_methods: Vec<serde_json::Value>,
+    /// Always true: nothing is charged.
+    pub demo: bool,
+}
+
+/// `GET /subscription/plans` (admin) — prices, limits and features for the plan picker.
+pub async fn plans(_user: AuthUser) -> Json<PlansResponse> {
+    Json(PlansResponse {
+        plans: [Plan::Basic, Plan::Premium]
+            .into_iter()
+            .map(|p| PlanOption {
+                plan: p,
+                monthly_php: price_php(p, Term::Monthly),
+                yearly_php: price_php(p, Term::Yearly),
+                limits: p.limits(),
+                features: p.features(),
+            })
+            .collect(),
+        payment_methods: PAYMENT_METHODS.iter().map(|(id, label)| serde_json::json!({ "id": id, "label": label })).collect(),
+        demo: true,
+    })
+}
+
+#[derive(Deserialize)]
+pub struct CheckoutInput {
+    pub plan: Plan,
+    pub term: Term,
+    pub payment_method: String,
+}
+
+#[derive(Serialize)]
+pub struct Receipt {
+    /// Shown to the admin only; not stored.
+    pub reference: String,
+    pub plan: Plan,
+    pub term: Term,
+    pub amount_php: i64,
+    pub payment_method: String,
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
+    /// `renewal` (same plan, extends the current period), `change` (new plan from today)
+    /// or `new` (after expiry, or no plan yet).
+    pub kind: &'static str,
+    pub demo: bool,
+    pub subscription: SubscriptionInfo,
+}
+
+/// `POST /subscription/checkout` (admin) — demo purchase of a plan. Works while the
+/// subscription is expired (that's when schools renew). No money moves.
+pub async fn checkout(
+    State(state): State<AppState>,
+    admin: AuthUser,
+    Json(input): Json<CheckoutInput>,
+) -> AppResult<Json<Receipt>> {
+    let method = PAYMENT_METHODS
+        .iter()
+        .find(|(id, _)| *id == input.payment_method)
+        .map(|(_, label)| label.to_string())
+        .ok_or_else(|| crate::error::AppError::BadRequest("Choose a payment method.".into()))?;
+
+    let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT 1 FROM schools WHERE id = $1 FOR UPDATE")
+        .bind(admin.school_id)
+        .execute(&mut *tx)
+        .await?;
+    let cur = current(&state.db, admin.school_id).await?;
+    let today = crate::validate::today_ph();
+
+    // Same plan while still active: extend from the day after it ends.
+    // Different plan, expired, or none: start today and end the old plan.
+    let (start, kind) = match (cur.read_only, cur.end_date) {
+        (false, Some(end)) if cur.plan == input.plan => (end.succ_opt().unwrap_or(end), "renewal"),
+        (false, Some(_)) => (today, "change"),
+        _ => (today, "new"),
+    };
+    let end = start
+        .checked_add_months(chrono::Months::new(input.term.months()))
+        .and_then(|d| d.pred_opt())
+        .ok_or_else(|| crate::error::AppError::BadRequest("Date out of range.".into()))?;
+
+    if kind != "renewal" {
+        sqlx::query("UPDATE subscriptions SET status = 'cancelled' WHERE school_id = $1 AND status = 'active'")
+            .bind(admin.school_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+    let id: Uuid = sqlx::query_scalar(
+        "INSERT INTO subscriptions (school_id, plan, start_date, end_date, status)
+         VALUES ($1, $2, $3, $4, 'active') RETURNING id",
+    )
+    .bind(admin.school_id)
+    .bind(input.plan)
+    .bind(start)
+    .bind(end)
+    .fetch_one(&mut *tx)
+    .await?;
+    crate::activity::log(&mut tx, &admin, crate::activity::Action::Create, "subscriptions", id).await?;
+    tx.commit().await?;
+
+    let reference = format!("DEMO-{}", &id.simple().to_string()[..8].to_uppercase());
+    tracing::info!(school_id = %admin.school_id, plan = ?input.plan, term = ?input.term, kind, "demo checkout");
+    Ok(Json(Receipt {
+        reference,
+        plan: input.plan,
+        term: input.term,
+        amount_php: price_php(input.plan, input.term),
+        payment_method: method,
+        start_date: start,
+        end_date: end,
+        kind,
+        demo: true,
+        subscription: current(&state.db, admin.school_id).await?,
+    }))
 }

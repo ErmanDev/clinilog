@@ -29,6 +29,8 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/users/{id}/enable", post(users::enable))
         .route("/users/{id}/reset-password", post(users::reset_password))
         .route("/activity", get(activity::list))
+        .route("/subscription/plans", get(subscription::plans))
+        .route("/subscription/checkout", post(subscription::checkout))
         .route("/sections", post(sections::create))
         .route("/sections/{id}", put(sections::update).delete(sections::delete))
         .route("/students/{id}", delete(students::delete))

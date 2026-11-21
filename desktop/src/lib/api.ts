@@ -320,6 +320,44 @@ export const reportsApi = {
   savePdf: (fileName: string) => call<string | null>("save_report_pdf", { fileName }),
 };
 
+// ---------- Mock subscription checkout (no real payment) ----------
+
+export type Term = "monthly" | "yearly";
+
+export interface PlanOption {
+  plan: PlanName;
+  monthly_php: number;
+  yearly_php: number;
+  limits: { max_students: number | null; max_users: number };
+  features: Features;
+}
+
+export interface PlansResponse {
+  plans: PlanOption[];
+  payment_methods: { id: string; label: string }[];
+  demo: boolean;
+}
+
+export interface Receipt {
+  reference: string;
+  plan: PlanName;
+  term: Term;
+  amount_php: number;
+  payment_method: string;
+  start_date: string;
+  end_date: string;
+  kind: "renewal" | "change" | "new";
+  demo: boolean;
+  subscription: SubscriptionInfo;
+}
+
+export const subscriptionApi = {
+  plans: () => request<PlansResponse>("GET", "subscription/plans"),
+  /** Demo purchase: no money moves, no payment details are sent. */
+  checkout: (plan: PlanName, term: Term, payment_method: string) =>
+    request<Receipt>("POST", "subscription/checkout", { plan, term, payment_method }),
+};
+
 // ---------- Admin: users & activity ----------
 
 export interface Account {
@@ -335,7 +373,7 @@ export interface ActivityEntry {
   id: string;
   created_at: string;
   action: "view" | "create" | "update" | "delete";
-  table_name: "students" | "clinic_visits" | "users";
+  table_name: "students" | "clinic_visits" | "users" | "subscriptions";
   record_id: string;
   record_label: string | null;
   user_id: string;

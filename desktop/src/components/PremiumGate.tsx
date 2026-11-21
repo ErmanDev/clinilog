@@ -1,5 +1,6 @@
 import { Lock, X } from "lucide-react";
 import { useEffect, useId, useRef, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import type { Features } from "../lib/api";
 import { usePlan } from "../lib/session";
 
@@ -60,6 +61,11 @@ const PREMIUM_BENEFITS = [
   "Daily server backups (Basic: weekly)",
 ];
 
+const btn = (tone: "primary" | "secondary") =>
+  tone === "primary"
+    ? "rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+    : "rounded-lg bg-white px-4 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50";
+
 export function UpgradeDialog({
   dialogRef,
   label,
@@ -119,19 +125,17 @@ export function UpgradeDialog({
             </li>
           ))}
         </ul>
-        <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
-          {isAdmin
-            ? "To upgrade, contact your Clinilog provider."
-            : "Ask your clinic admin about upgrading to Premium."}
-        </p>
-        <div className="mt-5 flex justify-end">
-          <button
-            autoFocus
-            type="button"
-            onClick={() => dialogRef.current?.close()}
-            className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
-          >
-            OK
+        {!isAdmin && (
+          <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">Ask your clinic admin about upgrading to Premium.</p>
+        )}
+        <div className="mt-5 flex justify-end gap-2">
+          {isAdmin && (
+            <Link to="/subscription" className={`${btn("primary")}`} onClick={() => dialogRef.current?.close()}>
+              See plans
+            </Link>
+          )}
+          <button autoFocus type="button" onClick={() => dialogRef.current?.close()} className={btn(isAdmin ? "secondary" : "primary")}>
+            {isAdmin ? "Not now" : "OK"}
           </button>
         </div>
       </div>
