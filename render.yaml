@@ -1,0 +1,47 @@
+# Render Blueprint for the Clinilog API (spec §9a).
+# In Render: New → Blueprint → pick this repo. It creates the database and the web service.
+#
+# Plans: "free" is for trying things out. A free web service sleeps when idle (the first
+# request takes up to a minute) and a free database is deleted after 30 days. For real
+# clinic use, change both plans to paid ones (e.g. web "starter", database "basic-256mb").
+
+databases:
+  - name: clinilog-db
+    plan: free
+    region: singapore
+    databaseName: clinilog
+    user: clinilog
+    postgresMajorVersion: "16"
+    ipAllowList: [] # no outside access; the API connects over Render's private network
+
+services:
+  - type: web
+    name: clinilog-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    healthCheckPath: /health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - server/**
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: clinilog-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_TTL_MINUTES
+        value: "480"
+      - key: RUST_LOG
+        value: clinilog_server=info,tower_http=info
+      # First admin's password. Render asks for it when the Blueprint is created.
+      # On first start the server creates the school, this admin, sample sections and
+      # medicines, and logs the school_id. Later starts skip seeding.
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_ADMIN_USERNAME
+        value: admin
