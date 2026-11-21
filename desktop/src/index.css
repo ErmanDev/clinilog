@@ -14,6 +14,13 @@ body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
 
+/* WebView2 (Edge) adds its own "reveal password" eye to password fields.
+   Clinilog has its own Show/Hide button, so hide the built-in one. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
 dialog::backdrop {
   background: rgb(15 23 42 / 0.45);
 }
