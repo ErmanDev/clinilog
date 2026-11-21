@@ -84,6 +84,17 @@ Search rules:
 - Date ranges include both end days and use Philippine calendar days.
 - On a Basic plan, any Premium-only filter gets a `403` with `code: "premium_required"`.
 
+Subscriptions (a demo; no real payment):
+- **Endpoints.** `GET /subscription/plans` (admin) lists the sample prices, limits and features. `POST /subscription/checkout` (admin) takes `{ plan, term, payment_method }` and records a new subscription.
+- **No real money.** No money moves and no payment details are collected. The method (GCash, Maya, card, bank transfer) is a label only. The receipt reference (`DEMO-…`) isn't stored.
+- **Prices.** Sample prices are constants in `server/src/subscription.rs` (`price_php`): Basic ₱500/month or ₱5,000/year, Premium ₱1,500/month or ₱15,000/year.
+- **Start dates:**
+  - Renewing the same plan while it's active extends it from the day after it ends.
+  - Switching plans starts today and cancels the old plan.
+  - After expiry, a renewal starts today.
+- **Expired plans.** Checkout works while the school is read-only, because that's when it renews.
+- **Activity log.** Each checkout is recorded with table `subscriptions`.
+
 Account rules:
 - Only active accounts count toward the plan limit (Basic 2, Premium 10). Disabling an account frees a slot.
 - An admin can't disable or demote themselves, and the last active admin can't be disabled or demoted.
