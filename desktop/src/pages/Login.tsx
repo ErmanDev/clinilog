@@ -4,6 +4,7 @@ import { api, asCmdError, type ConfigInfo } from "../lib/api";
 import { useSession } from "../lib/session";
 import { WindowControls } from "../components/WindowControls";
 import logoMark from "../assets/clinilog-mark.png";
+import { ClinicScene } from "../components/ClinicScene";
 
 /** How many times to ping the server before giving up (each try waits up to 20 s). */
 const MAX_CONNECT_TRIES = 4;
@@ -101,20 +102,24 @@ export function LoginPage() {
       <div className="absolute top-3 right-3 z-10">
         <WindowControls />
       </div>
-      <section className="hidden w-[42%] flex-col justify-between bg-teal-800 p-10 text-white lg:flex">
-        <div className="flex items-center gap-3">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-white p-1.5" aria-hidden>
-            <img src={logoMark} alt="" className="size-full" draggable={false} />
-          </span>
-          <span className="text-2xl font-bold tracking-tight">Clinilog</span>
+      <section className="relative hidden w-[46%] overflow-hidden bg-gradient-to-b from-teal-800 to-teal-900 text-white lg:block">
+        {/* Decorative animation: students checking in and being treated, on a loop. */}
+        <ClinicScene className="absolute inset-0" />
+        <div className="pointer-events-none relative flex h-full flex-col justify-between p-10">
+          <div className="flex items-center gap-3">
+            <span className="flex size-11 items-center justify-center rounded-xl bg-white p-1.5" aria-hidden>
+              <img src={logoMark} alt="" className="size-full" draggable={false} />
+            </span>
+            <span className="text-2xl font-bold tracking-tight">Clinilog</span>
+          </div>
+          <div>
+            <p className="text-2xl font-semibold leading-snug">School clinic records, kept safe and simple.</p>
+            <p className="mt-2 max-w-sm text-sm text-teal-100">
+              Student health profiles, clinic visits and reports in one place.
+            </p>
+            <p className="mt-6 text-xs text-teal-200">Student health data is protected under RA 10173 (Data Privacy Act).</p>
+          </div>
         </div>
-        <div>
-          <p className="text-3xl font-semibold leading-snug">School clinic records, kept safe and simple.</p>
-          <p className="mt-3 max-w-sm text-teal-100">
-            Student health profiles, clinic visits and reports in one place.
-          </p>
-        </div>
-        <p className="text-xs text-teal-200">Student health data is protected under RA 10173 (Data Privacy Act).</p>
       </section>
 
       <section className="flex flex-1 items-center justify-center p-8">
