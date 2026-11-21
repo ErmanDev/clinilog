@@ -1,13 +1,15 @@
 # Render Blueprint for the Clinilog API (spec §9a).
 # In Render: New → Blueprint → pick this repo. It creates the database and the web service.
 #
-# Plans: "free" is for trying things out. A free web service sleeps when idle (the first
-# request takes up to a minute) and a free database is deleted after 30 days. For real
-# clinic use, change both plans to paid ones (e.g. web "starter", database "basic-256mb").
+# Plans:
+# - Database: "basic-256mb", Render's smallest paid plan. Free databases are deleted after
+#   30 days and a workspace can only have one, so real clinic data needs a paid plan.
+# - Web service: "free" sleeps when idle (the first request takes up to a minute; the app
+#   shows "Connecting to server…"). Use "starter" or higher for everyday clinic use.
 
 databases:
   - name: clinilog-db
-    plan: free
+    plan: basic-256mb
     region: singapore
     databaseName: clinilog
     user: clinilog

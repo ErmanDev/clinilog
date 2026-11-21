@@ -134,7 +134,8 @@ Notes:
 - The database has no outside access. Only the API reaches it, over Render's private network.
 - Migrations run automatically when the service starts.
 - Seeding only happens once. Later starts skip it, so `SEED_ADMIN_PASSWORD` can be deleted afterwards.
-- The **free** plans are for trying Clinilog out. A free web service sleeps when idle, so the first request takes up to a minute; the app shows "Connecting to server…" meanwhile. A free database is **deleted after 30 days**. For real clinic use, switch both to paid plans in `render.yaml` or the dashboard.
+- The database uses Render's smallest paid plan, `basic-256mb`. Free databases are deleted after 30 days, and a workspace can only have one.
+- The web service uses the **free** plan, which sleeps when idle. The first request after that takes up to a minute; the app shows "Connecting to server…" meanwhile. For everyday clinic use, switch it to `starter` or higher.
 
 ## Desktop app
 
