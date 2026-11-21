@@ -193,6 +193,10 @@ CLINILOG_API_URL=https://<your-service>.onrender.com CLINILOG_SCHOOL_ID=<school 
 
 The installers are written to `desktop/src-tauri/target/release/bundle/` (`msi/` and `nsis/`). The first build downloads the WiX and NSIS tools.
 
+The URL and school ID are built into the app, so always rebuild after changing them. Old files in `bundle/` are only replaced when a build succeeds.
+
+If the `.msi` step fails with `light.exe : error LGHT0001 : JIT Compiler encountered an internal limitation`, run the same command again. This is an occasional crash in the .NET runtime WiX uses, not a problem in the code. To build only the `-setup.exe`, add `-- --bundles nsis`.
+
 How the app handles sign-in and the plan:
 - All server calls go through the Rust side of the app. The login token stays in memory there and never reaches the web page.
 - After login, the app fetches the school's plan, and refreshes it every 30 minutes. It saves the last known plan locally.
