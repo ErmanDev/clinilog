@@ -170,13 +170,15 @@ pub async fn get(State(state): State<AppState>, user: AuthUser) -> AppResult<Jso
     Ok(Json(current(&state.db, user.school_id).await?))
 }
 
-// ---------- Mock checkout (no real payment) ----------
+// ---------- Prices, payment details and applying a paid plan ----------
 //
-// Clinilog has no payment provider. Admins "buy" a plan through a demo checkout:
-// no money moves and no payment details are collected. Prices are samples.
+// Payment is manual: the admin pays by GCash (InstaPay QR), then sends the reference
+// number and a receipt screenshot (see `payments.rs`). The plan only starts once the
+// superadmin approves the request.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "text", rename_all = "lowercase")]
 pub enum Term {
     Monthly,
     Yearly,
@@ -191,38 +193,53 @@ impl Term {
     }
 }
 
-/// Sample prices in Philippine pesos. Change them here; the app shows whatever the server sends.
-fn price_php(plan: Plan, term: Term) -> i64 {
+/// Prices in Philippine pesos. Change them here; the app shows whatever the server sends.
+pub fn price_php(plan: Plan, term: Term) -> i32 {
     match (plan, term) {
-        (Plan::Basic, Term::Monthly) => 500,
-        (Plan::Basic, Term::Yearly) => 5_000,
-        (Plan::Premium, Term::Monthly) => 1_500,
-        (Plan::Premium, Term::Yearly) => 15_000,
+        (Plan::Basic, Term::Monthly) => 150,
+        (Plan::Basic, Term::Yearly) => 1_300,
+        (Plan::Premium, Term::Monthly) => 300,
+        (Plan::Premium, Term::Yearly) => 3_600,
     }
 }
 
-const PAYMENT_METHODS: &[(&str, &str)] =
-    &[("gcash", "GCash"), ("maya", "Maya"), ("card", "Credit / debit card"), ("bank", "Bank transfer")];
+/// The InstaPay QR admins scan with GCash.
+const GCASH_QR_PNG: &[u8] = include_bytes!("../assets/gcash-qr.png");
+/// As printed on the QR (masked by GCash).
+const GCASH_ACCOUNT_NAME: &str = "MI*****E G.";
 
 #[derive(Serialize)]
 pub struct PlanOption {
     pub plan: Plan,
-    pub monthly_php: i64,
-    pub yearly_php: i64,
+    pub monthly_php: i32,
+    pub yearly_php: i32,
     pub limits: Limits,
     pub features: Features,
 }
 
 #[derive(Serialize)]
-pub struct PlansResponse {
-    pub plans: Vec<PlanOption>,
-    /// `[{ id, label }]`
-    pub payment_methods: Vec<serde_json::Value>,
-    /// Always true: nothing is charged.
-    pub demo: bool,
+pub struct PaymentInfo {
+    pub method: &'static str,
+    pub label: &'static str,
+    pub account_name: &'static str,
+    /// `data:image/png;base64,...`, ready for an `<img>`.
+    pub qr_image: String,
 }
 
-/// `GET /subscription/plans` (admin) — prices, limits and features for the plan picker.
+#[derive(Serialize)]
+pub struct PlansResponse {
+    pub plans: Vec<PlanOption>,
+    pub payment: PaymentInfo,
+}
+
+fn qr_data_url() -> String {
+    use base64::Engine;
+    static URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    URL.get_or_init(|| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(GCASH_QR_PNG)))
+        .clone()
+}
+
+/// `GET /subscription/plans` (admin) — prices, limits, features and the GCash QR.
 pub async fn plans(_user: AuthUser) -> Json<PlansResponse> {
     Json(PlansResponse {
         plans: [Plan::Basic, Plan::Premium]
@@ -235,99 +252,83 @@ pub async fn plans(_user: AuthUser) -> Json<PlansResponse> {
                 features: p.features(),
             })
             .collect(),
-        payment_methods: PAYMENT_METHODS.iter().map(|(id, label)| serde_json::json!({ "id": id, "label": label })).collect(),
-        demo: true,
+        payment: PaymentInfo {
+            method: "gcash",
+            label: "GCash (InstaPay QR)",
+            account_name: GCASH_ACCOUNT_NAME,
+            qr_image: qr_data_url(),
+        },
     })
 }
 
-#[derive(Deserialize)]
-pub struct CheckoutInput {
-    pub plan: Plan,
-    pub term: Term,
-    pub payment_method: String,
-}
-
-#[derive(Serialize)]
-pub struct Receipt {
-    /// Shown to the admin only; not stored.
-    pub reference: String,
-    pub plan: Plan,
-    pub term: Term,
-    pub amount_php: i64,
-    pub payment_method: String,
+#[derive(Debug, Serialize)]
+pub struct Applied {
+    pub subscription_id: Uuid,
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
     /// `renewal` (same plan, extends the current period), `change` (new plan from today)
     /// or `new` (after expiry, or no plan yet).
     pub kind: &'static str,
-    pub demo: bool,
-    pub subscription: SubscriptionInfo,
 }
 
-/// `POST /subscription/checkout` (admin) — demo purchase of a plan. Works while the
-/// subscription is expired (that's when schools renew). No money moves.
-pub async fn checkout(
-    State(state): State<AppState>,
-    admin: AuthUser,
-    Json(input): Json<CheckoutInput>,
-) -> AppResult<Json<Receipt>> {
-    let method = PAYMENT_METHODS
-        .iter()
-        .find(|(id, _)| *id == input.payment_method)
-        .map(|(_, label)| label.to_string())
-        .ok_or_else(|| crate::error::AppError::BadRequest("Choose a payment method.".into()))?;
-
-    let mut tx = state.db.begin().await?;
-    sqlx::query("SELECT 1 FROM schools WHERE id = $1 FOR UPDATE")
-        .bind(admin.school_id)
-        .execute(&mut *tx)
-        .await?;
-    let cur = current(&state.db, admin.school_id).await?;
+/// Starts a paid plan for a school. The caller must hold a lock on the school row
+/// (`SELECT ... FROM schools ... FOR UPDATE`) in `tx`.
+///
+/// Same plan while still active: extends from the day after it ends.
+/// Different plan, expired, or none: starts today and ends the old plan.
+pub async fn apply_plan(
+    tx: &mut sqlx::PgConnection,
+    db: &PgPool,
+    school_id: Uuid,
+    plan: Plan,
+    term: Term,
+) -> AppResult<Applied> {
+    let cur = current(db, school_id).await?;
     let today = crate::validate::today_ph();
-
-    // Same plan while still active: extend from the day after it ends.
-    // Different plan, expired, or none: start today and end the old plan.
     let (start, kind) = match (cur.read_only, cur.end_date) {
-        (false, Some(end)) if cur.plan == input.plan => (end.succ_opt().unwrap_or(end), "renewal"),
+        (false, Some(end)) if cur.plan == plan => (end.succ_opt().unwrap_or(end), "renewal"),
         (false, Some(_)) => (today, "change"),
         _ => (today, "new"),
     };
     let end = start
-        .checked_add_months(chrono::Months::new(input.term.months()))
+        .checked_add_months(chrono::Months::new(term.months()))
         .and_then(|d| d.pred_opt())
         .ok_or_else(|| crate::error::AppError::BadRequest("Date out of range.".into()))?;
 
     if kind != "renewal" {
         sqlx::query("UPDATE subscriptions SET status = 'cancelled' WHERE school_id = $1 AND status = 'active'")
-            .bind(admin.school_id)
+            .bind(school_id)
             .execute(&mut *tx)
             .await?;
     }
-    let id: Uuid = sqlx::query_scalar(
+    let subscription_id: Uuid = sqlx::query_scalar(
         "INSERT INTO subscriptions (school_id, plan, start_date, end_date, status)
          VALUES ($1, $2, $3, $4, 'active') RETURNING id",
     )
-    .bind(admin.school_id)
-    .bind(input.plan)
+    .bind(school_id)
+    .bind(plan)
     .bind(start)
     .bind(end)
     .fetch_one(&mut *tx)
     .await?;
-    crate::activity::log(&mut tx, &admin, crate::activity::Action::Create, "subscriptions", id).await?;
-    tx.commit().await?;
+    Ok(Applied { subscription_id, start_date: start, end_date: end, kind })
+}
 
-    let reference = format!("DEMO-{}", &id.simple().to_string()[..8].to_uppercase());
-    tracing::info!(school_id = %admin.school_id, plan = ?input.plan, term = ?input.term, kind, "demo checkout");
-    Ok(Json(Receipt {
-        reference,
-        plan: input.plan,
-        term: input.term,
-        amount_php: price_php(input.plan, input.term),
-        payment_method: method,
-        start_date: start,
-        end_date: end,
-        kind,
-        demo: true,
-        subscription: current(&state.db, admin.school_id).await?,
-    }))
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prices() {
+        assert_eq!(price_php(Plan::Basic, Term::Monthly), 150);
+        assert_eq!(price_php(Plan::Basic, Term::Yearly), 1_300);
+        assert_eq!(price_php(Plan::Premium, Term::Monthly), 300);
+        assert_eq!(price_php(Plan::Premium, Term::Yearly), 3_600);
+    }
+
+    #[test]
+    fn qr_is_a_png() {
+        assert!(GCASH_QR_PNG.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert!(qr_data_url().starts_with("data:image/png;base64,iVBOR"));
+    }
 }

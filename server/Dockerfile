@@ -15,6 +15,7 @@ RUN mkdir -p src/bin \
 
 COPY build.rs ./
 COPY migrations ./migrations
+COPY assets ./assets
 COPY src ./src
 RUN cargo build --release --locked
 

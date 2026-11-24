@@ -15,6 +15,8 @@ use crate::{error::AppError, AppState};
 pub enum Role {
     Admin,
     Staff,
+    /// Never stored in `users`: the one Clinilog-wide account from the server settings.
+    Superadmin,
 }
 
 /// The logged-in user, loaded fresh from the database on every request.
@@ -56,6 +58,11 @@ pub async fn require_auth(
         .jwt
         .verify(token)
         .ok_or_else(|| AppError::Unauthorized("Your session has expired. Please log in again.".into()))?;
+    if claims.role == super::superadmin::ROLE {
+        return Err(AppError::Forbidden(
+            "The superadmin account can only review payment requests, not clinic records.".into(),
+        ));
+    }
 
     // Re-check the account: a disabled user or a role change takes effect immediately,
     // not when the token expires.

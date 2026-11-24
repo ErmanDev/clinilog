@@ -2,7 +2,9 @@
 // The webview never talks to the server directly and never sees the token.
 import { invoke } from "@tauri-apps/api/core";
 
-export type Role = "admin" | "staff";
+/** "superadmin" is the one Clinilog-wide account that reviews payments; it never appears in User Accounts. */
+export type Role = "admin" | "staff" | "superadmin";
+export type AccountRole = "admin" | "staff";
 export type PlanName = "basic" | "premium";
 
 export interface UserInfo {
@@ -320,7 +322,7 @@ export const reportsApi = {
   savePdf: (fileName: string) => call<string | null>("save_report_pdf", { fileName }),
 };
 
-// ---------- Mock subscription checkout (no real payment) ----------
+// ---------- Subscription payments (GCash, reviewed by the superadmin) ----------
 
 export type Term = "monthly" | "yearly";
 
@@ -332,30 +334,81 @@ export interface PlanOption {
   features: Features;
 }
 
-export interface PlansResponse {
-  plans: PlanOption[];
-  payment_methods: { id: string; label: string }[];
-  demo: boolean;
+export interface PaymentInfo {
+  method: "gcash";
+  label: string;
+  account_name: string;
+  /** data:image/png;base64,… */
+  qr_image: string;
 }
 
-export interface Receipt {
-  reference: string;
+export interface PlansResponse {
+  plans: PlanOption[];
+  payment: PaymentInfo;
+}
+
+export type RequestStatus = "pending" | "approved" | "rejected" | "cancelled";
+
+export interface PaymentRequest {
+  id: string;
   plan: PlanName;
   term: Term;
   amount_php: number;
   payment_method: string;
-  start_date: string;
-  end_date: string;
-  kind: "renewal" | "change" | "new";
-  demo: boolean;
-  subscription: SubscriptionInfo;
+  reference_no: string;
+  status: RequestStatus;
+  created_at: string;
+  reviewed_at: string | null;
+  /** Reason for a rejection (or the superadmin's note on an approval). */
+  review_note: string | null;
+  requested_by_name: string;
+  /** The plan period, once approved. */
+  start_date: string | null;
+  end_date: string | null;
 }
 
 export const subscriptionApi = {
   plans: () => request<PlansResponse>("GET", "subscription/plans"),
-  /** Demo purchase: no money moves, no payment details are sent. */
-  checkout: (plan: PlanName, term: Term, payment_method: string) =>
-    request<Receipt>("POST", "subscription/checkout", { plan, term, payment_method }),
+  requests: () => request<PaymentRequest[]>("GET", "subscription/requests"),
+  /** `receipt_image` is a data URL. The plan starts only after the superadmin approves. */
+  submit: (input: { plan: PlanName; term: Term; reference_no: string; receipt_image: string }) =>
+    request<PaymentRequest>("POST", "subscription/requests", input),
+  cancel: (id: string) => request<PaymentRequest>("POST", `subscription/requests/${encodeURIComponent(id)}/cancel`),
+};
+
+// ---------- Superadmin: payment review ----------
+
+export interface ReviewItem extends Omit<PaymentRequest, "requested_by_name"> {
+  school_id: string;
+  school_name: string;
+  requested_by_name: string;
+  requested_by_username: string;
+}
+
+export interface ReviewDetail extends ReviewItem {
+  receipt_image: string;
+  current_subscription: SubscriptionInfo;
+  /** Other requests (any school, any status) that used the same reference number. */
+  reference_uses_elsewhere: number;
+}
+
+export interface SchoolSummary {
+  id: string;
+  name: string;
+  plan: PlanName | null;
+  status: "active" | "expired" | "cancelled" | null;
+  end_date: string | null;
+  pending_requests: number;
+  last_paid_at: string | null;
+}
+
+export const superadminApi = {
+  requests: (status: RequestStatus | "all") => request<ReviewItem[]>("GET", `superadmin/requests${qs({ status })}`),
+  request: (id: string) => request<ReviewDetail>("GET", `superadmin/requests/${encodeURIComponent(id)}`),
+  approve: (id: string, note?: string) =>
+    request<ReviewItem>("POST", `superadmin/requests/${encodeURIComponent(id)}/approve`, { note: note || null }),
+  reject: (id: string, note: string) => request<ReviewItem>("POST", `superadmin/requests/${encodeURIComponent(id)}/reject`, { note }),
+  schools: () => request<SchoolSummary[]>("GET", "superadmin/schools"),
 };
 
 // ---------- Admin: users & activity ----------
@@ -364,7 +417,7 @@ export interface Account {
   id: string;
   full_name: string;
   username: string;
-  role: Role;
+  role: AccountRole;
   is_active: boolean;
   created_at: string;
 }
@@ -373,7 +426,7 @@ export interface ActivityEntry {
   id: string;
   created_at: string;
   action: "view" | "create" | "update" | "delete";
-  table_name: "students" | "clinic_visits" | "users" | "subscriptions";
+  table_name: "students" | "clinic_visits" | "users" | "subscriptions" | "subscription_requests";
   record_id: string;
   record_label: string | null;
   user_id: string;
@@ -390,9 +443,9 @@ export interface ActivityPage {
 
 export const usersApi = {
   list: () => request<Account[]>("GET", "users"),
-  create: (input: { full_name: string; username: string; password: string; role: Role }) =>
+  create: (input: { full_name: string; username: string; password: string; role: AccountRole }) =>
     request<Account>("POST", "users", input),
-  update: (id: string, input: { full_name: string; role: Role }) =>
+  update: (id: string, input: { full_name: string; role: AccountRole }) =>
     request<Account>("PUT", `users/${encodeURIComponent(id)}`, input),
   disable: (id: string) => request<Account>("POST", `users/${encodeURIComponent(id)}/disable`),
   enable: (id: string) => request<Account>("POST", `users/${encodeURIComponent(id)}/enable`),

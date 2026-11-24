@@ -157,7 +157,8 @@ pub async fn create(
         .bind(&username)
         .fetch_one(&mut *tx)
         .await?;
-        if taken {
+        let reserved = state.superadmin.as_deref().is_some_and(|sa| sa.username == username.to_lowercase());
+        if taken || reserved {
             e.add("username", "This username is already used in your school.");
         }
     }

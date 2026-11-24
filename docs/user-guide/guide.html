@@ -377,25 +377,35 @@
 
 <!-- ===================== 11 ===================== -->
 <h2 id="s11"><span class="num">11.</span>Subscription <span class="who admin">ADMIN</span></h2>
-<p>This page shows your school's plan and lets you renew, upgrade or switch plans.</p>
-<figure><img src="img/16-subscription.png" alt="" /><figcaption>Current subscription (top) and the plans you can choose (bottom).</figcaption></figure>
-<div class="box warn"><p><span class="label">Demo checkout.</span> Payments in this version are a <b>demonstration</b>: no money is charged and no card or account details are asked for. Prices shown are samples.</p></div>
-<h3>Renewing, upgrading or switching</h3>
+<p>This page shows your school's plan and lets you renew, upgrade or switch plans. You pay with <b>GCash</b> by scanning a QR code, then send the receipt. Clinilog checks the payment, and your plan changes once it is <b>approved</b>.</p>
+<figure><img src="img/16-subscription.png" alt="" /><figcaption>Current subscription (top), the plans you can choose, and your payment history (bottom).</figcaption></figure>
+<h3>Paying for a plan</h3>
 <ol class="steps">
   <li>Choose <b>Monthly</b> or <b>Yearly</b> at the top of the plans.</li>
-  <li>On a plan card, click <span class="ui">Renew …</span> (your current plan), <span class="ui">Upgrade to Premium</span> or <span class="ui">Switch to Basic</span>.</li>
-  <li>Check the summary (plan, amount and when it starts) and choose a payment method.</li>
-  <li>Click <span class="ui">Confirm demo payment</span>. A receipt confirms the new plan, and it applies immediately for everyone.</li>
+  <li>On a plan card, click <span class="ui">Renew …</span> (your current plan), <span class="ui">Upgrade to Premium</span> or <span class="ui">Switch to Basic</span>. A window shows the QR code and the exact amount to pay.</li>
+  <li>Open <b>GCash</b> on your phone, tap <b>QR</b>, and scan the code on the screen. Pay <b>exactly</b> the amount shown.</li>
+  <li>Take a <b>screenshot of the GCash receipt</b> on your phone and copy it to this computer (for example by email or Messenger).</li>
+  <li>Type the <b>reference number</b> from the receipt (shown as <i>Ref No.</i>). Spaces don't matter.</li>
+  <li>Click <span class="ui">Choose image</span> and pick the receipt screenshot. Both the reference number and the screenshot are required.</li>
+  <li>Click <span class="ui">Send for review</span>.</li>
 </ol>
-<div class="two">
-  <figure><img src="img/17-checkout-dialog.png" alt="" /><figcaption>The checkout.</figcaption></figure>
-  <figure><img src="img/18-receipt-dialog.png" alt="" /><figcaption>The receipt.</figcaption></figure>
-</div>
+<figure class="small"><img src="img/17-pay-dialog.png" alt="" /><figcaption>The payment window: QR code and amount (left), reference number and receipt (right).</figcaption></figure>
+<h3>After you send it</h3>
+<p>Your plan does <b>not</b> change straight away. The page shows <b>Payment waiting for review</b> while Clinilog matches your reference number and receipt with the payment it received. The page checks for the answer every minute, so you can leave it open or come back later.</p>
+<figure><img src="img/18-payment-pending.png" alt="" /><figcaption>A payment waiting for review.</figcaption></figure>
 <table>
-  <tr><th style="width:38%">If you…</th><th>The new period…</th></tr>
+  <tr><th style="width:26%">Status</th><th>What it means</th></tr>
+  <tr><td><b>Waiting for review</b></td><td>Clinilog hasn't checked it yet. You can't send another payment until it's reviewed. If you entered the wrong reference number or picked the wrong screenshot, click <span class="ui">Cancel this request</span> and send it again.</td></tr>
+  <tr><td><b>Approved</b></td><td>The payment matched. Your new plan applies straight away for everyone, and the period is shown in <b>Payment history</b>.</td></tr>
+  <tr><td><b>Not approved</b></td><td>The payment couldn't be matched. The reason is shown on the page. If you did pay, check the reference number and receipt, then send it again.</td></tr>
+  <tr><td><b>Cancelled</b></td><td>You withdrew it before it was reviewed.</td></tr>
+</table>
+<div class="box warn"><p><span class="label">Pay the exact amount.</span> Each reference number can only be used once. Keep your GCash receipt until the payment is approved.</p></div>
+<table>
+  <tr><th style="width:38%">If you…</th><th>When approved, the new period…</th></tr>
   <tr><td>Renew the same plan while it's still active</td><td>Is added on: it starts the day after the current one ends.</td></tr>
-  <tr><td>Switch plans (Basic ↔ Premium)</td><td>Starts today and replaces the old plan.</td></tr>
-  <tr><td>Renew after the plan has expired</td><td>Starts today.</td></tr>
+  <tr><td>Switch plans (Basic ↔ Premium)</td><td>Starts on the day it's approved and replaces the old plan.</td></tr>
+  <tr><td>Renew after the plan has expired</td><td>Starts on the day it's approved.</td></tr>
 </table>
 <p>Clinilog warns everyone when the plan ends within 14 days. If it expires, records can still be <b>viewed</b> but not changed until it's renewed (section 15). The page also shows how many students and active accounts you're using compared with your plan's limits.</p>
 
@@ -463,14 +473,14 @@
   <tr><td>Search</td><td class="c">Name / LRN and section</td><td class="c">+ grade, date range and complaint words</td></tr>
   <tr><td>Reports</td><td class="c">Visits per month, most common complaints</td><td class="c">+ by grade &amp; section, medicine usage, frequent visitors</td></tr>
   <tr><td>Server backups</td><td class="c">Weekly</td><td class="c">Daily</td></tr>
-  <tr><td>Sample price (demo)</td><td class="c">₱500 / month · ₱5,000 / year</td><td class="c">₱1,500 / month · ₱15,000 / year</td></tr>
+  <tr><td>Price (GCash)</td><td class="c">₱150 / month · ₱1,300 / year</td><td class="c">₱300 / month · ₱3,600 / year</td></tr>
 </table>
 <p>Premium-only items stay <b>visible but locked</b> on Basic, marked with a lock and a <b>Premium</b> badge. Clicking one explains what Premium adds.</p>
 <h3>If the subscription expires</h3>
 <ul>
   <li>Everyone sees a red banner: <i>"Your subscription has expired."</i></li>
   <li>All records can still be <b>viewed</b>, searched and reported on. Nothing is deleted.</li>
-  <li>Adding or changing records is paused until an administrator renews (<span class="ui">Renew now</span> in the banner).</li>
+  <li>Adding or changing records is paused until an administrator renews (<span class="ui">Renew now</span> in the banner) and the payment is approved.</li>
   <li>Administrators can still reset passwords and disable accounts while it's expired.</li>
 </ul>
 
@@ -508,6 +518,8 @@
   <tr><td>Can't delete a student</td><td>They have clinic visits on record; health records are kept.</td></tr>
   <tr><td>Can't delete a section or medicine</td><td>The section still has students, or the medicine was used in a visit. Move the students first, or rename the medicine.</td></tr>
   <tr><td>A lock or <b>Premium</b> badge</td><td>That feature is part of the Premium plan. An administrator can upgrade under Subscription.</td></tr>
+  <tr><td>Paid, but the plan hasn't changed</td><td>The payment is still <b>waiting for review</b>; the plan changes once it's approved. If it says <b>Not approved</b>, read the reason, then send the correct reference number and receipt again.</td></tr>
+  <tr><td>"This reference number was already sent"</td><td>Each GCash reference can be used once. Check you typed the number from <i>this</i> payment's receipt.</td></tr>
   <tr><td>Add student / Add user is unavailable</td><td>The plan limit is reached (500 students or 2 accounts on Basic), or the subscription has expired.</td></tr>
   <tr><td>Visits stay in "Waiting to upload"</td><td>Check the internet, then <span class="ui">Upload now</span>. If one says it needs attention, read the reason, then <span class="ui">Try again</span> or <span class="ui">Discard</span>.</td></tr>
   <tr><td>"Your password or account changed since you logged in"</td><td>Log out and log in again with your current password. Waiting visits are kept and will upload.</td></tr>
@@ -555,7 +567,7 @@
       <li><b>New school year sections:</b> Settings → Sections.</li>
       <li><b>New medicine in stock:</b> Settings → Medicines.</li>
       <li><b>Wrong visit:</b> open it → <span class="ui">Delete</span>, then record it again.</li>
-      <li><b>Renew or upgrade:</b> Subscription → plan → checkout.</li>
+      <li><b>Renew or upgrade:</b> Subscription → plan → pay with GCash → send reference number and receipt → wait for approval.</li>
       <li><b>Who looked at a record?</b> Activity Log → filter.</li>
     </ul>
     <h4>Window buttons</h4>

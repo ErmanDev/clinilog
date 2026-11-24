@@ -4,6 +4,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod medicines;
+pub mod payments;
 pub mod reports;
 pub mod routes;
 pub mod search;
@@ -23,6 +24,8 @@ use tower_http::trace::TraceLayer;
 pub struct AppState {
     pub db: PgPool,
     pub jwt: auth::jwt::JwtKeys,
+    /// `None` when no superadmin is configured (payment requests can't be reviewed).
+    pub superadmin: Option<std::sync::Arc<auth::superadmin::Superadmin>>,
 }
 
 pub fn app(state: AppState) -> Router {

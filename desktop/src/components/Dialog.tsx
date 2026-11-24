@@ -9,12 +9,15 @@ export function Dialog({
   title,
   children,
   footer,
+  wide = false,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  /** For content with an image beside a form. */
+  wide?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -34,7 +37,7 @@ export function Dialog({
       onClick={(e) => {
         if (e.target === ref.current) onClose();
       }}
-      className="m-auto w-full max-w-md rounded-xl p-0 shadow-xl"
+      className={`m-auto w-full ${wide ? "max-w-3xl" : "max-w-md"} rounded-xl p-0 shadow-xl`}
     >
       {open && (
         <div className="p-6">
@@ -65,6 +68,7 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel,
+  cancelLabel = "Cancel",
   tone = "danger",
   busy,
   error,
@@ -75,6 +79,7 @@ export function ConfirmDialog({
   title: string;
   children: ReactNode;
   confirmLabel: string;
+  cancelLabel?: string;
   tone?: "danger" | "primary";
   busy?: boolean;
   error?: string | null;
@@ -89,7 +94,7 @@ export function ConfirmDialog({
       footer={
         <>
           <button type="button" className={buttonClass("secondary")} onClick={onCancel} disabled={busy} autoFocus>
-            Cancel
+            {cancelLabel}
           </button>
           <button type="button" className={buttonClass(tone)} onClick={onConfirm} disabled={busy}>
             {busy && <Loader2 className="size-4 animate-spin" aria-hidden />}

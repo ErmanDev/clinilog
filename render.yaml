@@ -47,3 +47,10 @@ services:
         sync: false
       - key: SEED_ADMIN_USERNAME
         value: admin
+      # The Clinilog superadmin, who approves subscription payments in the desktop app.
+      # Password: 12+ characters with a letter and a number. Changing it signs the
+      # superadmin out everywhere. Leave it empty to turn the superadmin login off.
+      - key: SUPERADMIN_USERNAME
+        value: superadmin
+      - key: SUPERADMIN_PASSWORD
+        sync: false

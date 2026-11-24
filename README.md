@@ -84,16 +84,24 @@ Search rules:
 - Date ranges include both end days and use Philippine calendar days.
 - On a Basic plan, any Premium-only filter gets a `403` with `code: "premium_required"`.
 
-Subscriptions (a demo; no real payment):
-- **Endpoints.** `GET /subscription/plans` (admin) lists the sample prices, limits and features. `POST /subscription/checkout` (admin) takes `{ plan, term, payment_method }` and records a new subscription.
-- **No real money.** No money moves and no payment details are collected. The method (GCash, Maya, card, bank transfer) is a label only. The receipt reference (`DEMO-…`) isn't stored.
-- **Prices.** Sample prices are constants in `server/src/subscription.rs` (`price_php`): Basic ₱500/month or ₱5,000/year, Premium ₱1,500/month or ₱15,000/year.
-- **Start dates:**
+Subscriptions (paid by GCash, approved by the superadmin):
+- **Prices.** Constants in `server/src/subscription.rs` (`price_php`): Basic ₱150/month or ₱1,300/year, Premium ₱300/month or ₱3,600/year. The app shows whatever the server sends.
+- **Paying.** The admin scans the InstaPay QR (`server/assets/gcash-qr.png`, served by `GET /subscription/plans`) with GCash and pays. Then they send `POST /subscription/requests` with `{ plan, term, reference_no, receipt_image }`. Both the reference number and the receipt screenshot are required.
+- **Nothing changes yet.** The request waits as `pending`. A school can have only one pending request, and the admin can cancel it with `POST /subscription/requests/{id}/cancel`. `GET /subscription/requests` lists the school's history.
+- **Checks.** The reference number is stored as letters and digits only, in upper case, and must be 6–30 characters. A reference on a pending or approved request can't be used again. The receipt must really be a PNG, JPG or WEBP (checked from its bytes) and at most 3 MB. The app shrinks photos before sending.
+- **Review.** The superadmin compares the receipt and reference with the GCash payment received, then calls `POST /superadmin/requests/{id}/approve` or `/reject`. A rejection needs a reason, and the school sees it.
+- **Start dates (decided at approval):**
   - Renewing the same plan while it's active extends it from the day after it ends.
   - Switching plans starts today and cancels the old plan.
-  - After expiry, a renewal starts today.
-- **Expired plans.** Checkout works while the school is read-only, because that's when it renews.
-- **Activity log.** Each checkout is recorded with table `subscriptions`.
+  - After expiry, the plan starts today.
+- **Expired plans.** Schools can send payments while read-only, because that's when they renew.
+- **Activity log.** Requests and cancellations are logged with table `subscription_requests`.
+
+Superadmin:
+- One Clinilog-wide account, set on the server with `SUPERADMIN_USERNAME` (default `superadmin`) and `SUPERADMIN_PASSWORD`. The password needs 12+ characters with a letter and a number, or the server won't start. If `SUPERADMIN_PASSWORD` is unset, the superadmin login is off.
+- They log in from any school's desktop app with that username. The app then shows only **Payment Requests** and **Schools**.
+- The account can't open any school's records: `require_auth` rejects its token. Its routes are under `/superadmin/*`.
+- Changing the password signs the superadmin out everywhere. Schools can't create a user with the superadmin's username.
 
 Account rules:
 - Only active accounts count toward the plan limit (Basic 2, Premium 10). Disabling an account frees a slot.
@@ -121,6 +129,13 @@ Rules for clinic visits:
 | POST | `/users/{id}/disable`, `/users/{id}/enable` | admin | Disable or re-enable an account |
 | POST | `/users/{id}/reset-password` | admin | Set a new password. Also clears a login lock |
 | GET | `/activity?user_id=&action=&table=&date_from=&date_to=&page=` | admin | Activity log, newest first |
+| GET | `/subscription/plans` | admin | Prices, limits, features and the GCash QR |
+| GET, POST | `/subscription/requests` | admin | The school's payment history, or send a payment (reference number + receipt) |
+| POST | `/subscription/requests/{id}/cancel` | admin | Withdraw a payment that's still waiting for review |
+| GET | `/superadmin/requests?status=` | superadmin | Payment requests (`pending` by default, or `approved`, `rejected`, `cancelled`, `all`) |
+| GET | `/superadmin/requests/{id}` | superadmin | One request with its receipt image and the school's current plan |
+| POST | `/superadmin/requests/{id}/approve`, `/reject` | superadmin | Approve (starts the plan) or reject (`{ note }` required) |
+| GET | `/superadmin/schools` | superadmin | Every school with its plan, expiry and pending payments |
 
 Sign-in rules:
 - Usernames are case-insensitive. Passwords are case-sensitive.
@@ -145,6 +160,7 @@ Notes:
 - The database has no outside access. Only the API reaches it, over Render's private network.
 - Migrations run automatically when the service starts.
 - Seeding only happens once. Later starts skip it, so `SEED_ADMIN_PASSWORD` can be deleted afterwards.
+- Set **`SUPERADMIN_PASSWORD`** (Environment tab) for the account that approves payments. A Blueprint only asks for `sync: false` values when it's first created, so on an existing service add it by hand.
 - The database uses Render's smallest paid plan, `basic-256mb`. Free databases are deleted after 30 days, and a workspace can only have one.
 - The web service uses the **free** plan, which sleeps when idle. The first request after that takes up to a minute; the app shows "Connecting to server…" meanwhile. For everyday clinic use, switch it to `starter` or higher.
 

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clinilog_server::{app, auth::jwt::JwtKeys, config::Config, db, seed, AppState};
+use clinilog_server::{app, auth::{jwt::JwtKeys, superadmin::Superadmin}, config::Config, db, seed, AppState};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -13,6 +13,11 @@ async fn main() -> Result<()> {
         .init();
 
     let config = Config::from_env()?;
+    let superadmin = Superadmin::from_env()?.map(std::sync::Arc::new);
+    match &superadmin {
+        Some(sa) => tracing::info!(username = %sa.username, "superadmin login enabled"),
+        None => tracing::warn!("SUPERADMIN_PASSWORD not set: payment requests can't be reviewed"),
+    }
     let pool = db::connect_and_migrate(&config.database_url).await?;
 
     // First-time setup on hosts without a shell (e.g. Render's free tier).
@@ -32,7 +37,7 @@ async fn main() -> Result<()> {
     tracing::info!("Clinilog server listening on {addr}");
 
     let jwt = JwtKeys::new(&config.jwt_secret, config.jwt_ttl_minutes);
-    axum::serve(listener, app(AppState { db: pool, jwt }))
+    axum::serve(listener, app(AppState { db: pool, jwt, superadmin }))
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())

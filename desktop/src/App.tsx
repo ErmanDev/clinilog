@@ -18,6 +18,9 @@ import { VisitDetailPage } from "./pages/visits/VisitDetail";
 import { VisitFormPage } from "./pages/visits/VisitForm";
 import { VisitsListPage } from "./pages/visits/VisitsList";
 import { SubscriptionPage } from "./pages/Subscription";
+import { PaymentRequestsPage } from "./pages/superadmin/PaymentRequests";
+import { ReviewPaymentPage } from "./pages/superadmin/ReviewPayment";
+import { SchoolsPage } from "./pages/superadmin/Schools";
 
 export default function App() {
   return (
@@ -32,7 +35,7 @@ export default function App() {
 }
 
 function Root() {
-  const { status } = useSession();
+  const { status, session } = useSession();
 
   if (status === "loading") {
     return (
@@ -42,6 +45,19 @@ function Root() {
     );
   }
   if (status === "signed_out") return <LoginPage />;
+
+  if (session?.user.role === "superadmin") {
+    return (
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route index element={<PaymentRequestsPage />} />
+          <Route path="requests/:id" element={<ReviewPaymentPage />} />
+          <Route path="schools" element={<SchoolsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    );
+  }
 
   return (
     <Routes>

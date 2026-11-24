@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     http::StatusCode,
     middleware,
     routing::{delete, get, post, put},
@@ -9,14 +9,15 @@ use serde_json::{json, Value};
 
 use crate::{
     activity,
-    auth::{self, require_admin, require_auth},
-    medicines, reports, sections, students, subscription, users, visits, AppState,
+    auth::{self, require_admin, require_auth, require_superadmin},
+    medicines, payments, reports, sections, students, subscription, users, visits, AppState,
 };
 
 /// Route groups:
 /// - public:    no token needed
 /// - signed-in: any active user (admin or staff); handlers scope queries by `user.school_id`
 /// - admin:     signed-in AND role = admin
+/// - superadmin: the Clinilog-wide account from the server settings (payment review only)
 pub fn router(state: AppState) -> Router<AppState> {
     let public = Router::new()
         .route("/health", get(health))
@@ -30,7 +31,13 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/users/{id}/reset-password", post(users::reset_password))
         .route("/activity", get(activity::list))
         .route("/subscription/plans", get(subscription::plans))
-        .route("/subscription/checkout", post(subscription::checkout))
+        .route(
+            "/subscription/requests",
+            get(payments::list_for_school)
+                .post(payments::create)
+                .layer(DefaultBodyLimit::max(payments::UPLOAD_BODY_LIMIT)),
+        )
+        .route("/subscription/requests/{id}/cancel", post(payments::cancel))
         .route("/sections", post(sections::create))
         .route("/sections/{id}", put(sections::update).delete(sections::delete))
         .route("/students/{id}", delete(students::delete))
@@ -53,9 +60,17 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/reports/basic", get(reports::basic))
         .route("/reports/detailed", get(reports::detailed))
         .merge(admin)
-        .route_layer(middleware::from_fn_with_state(state, require_auth));
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
-    public.merge(signed_in)
+    let superadmin = Router::new()
+        .route("/superadmin/requests", get(payments::review_list))
+        .route("/superadmin/requests/{id}", get(payments::review_get))
+        .route("/superadmin/requests/{id}/approve", post(payments::approve))
+        .route("/superadmin/requests/{id}/reject", post(payments::reject))
+        .route("/superadmin/schools", get(payments::schools))
+        .route_layer(middleware::from_fn_with_state(state, require_superadmin));
+
+    public.merge(signed_in).merge(superadmin)
 }
 
 /// Liveness + database check. The desktop app can call this to show

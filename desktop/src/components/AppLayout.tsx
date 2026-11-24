@@ -3,7 +3,7 @@ import logoMark from "../assets/clinilog-mark.png";
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { planLabel } from "../lib/format";
-import { NAV_ITEMS, navFor } from "../lib/nav";
+import { navFor } from "../lib/nav";
 import { useSession } from "../lib/session";
 import { useSync } from "../lib/sync";
 import { ConfirmDialog } from "./Dialog";
@@ -20,9 +20,10 @@ export function AppLayout() {
   if (!session) return null;
   const waiting = (status?.pending ?? 0) + (status?.failed ?? 0);
 
+  const superadmin = session.user.role === "superadmin";
   const items = navFor(session.user.role);
   // "/students/123/edit" belongs to "Students": pick the longest matching nav path.
-  const current = NAV_ITEMS.filter(
+  const current = items.filter(
     (i) => location.pathname === i.path || (i.path !== "/" && location.pathname.startsWith(`${i.path}/`)),
   ).sort((a, b) => b.path.length - a.path.length)[0];
 
@@ -34,7 +35,7 @@ export function AppLayout() {
           <div className="min-w-0">
             <p className="text-base font-bold leading-tight tracking-tight">Clinilog</p>
             <p className="truncate text-xs text-slate-500" title={session.school.name}>
-              {session.school.name}
+              {superadmin ? "Payment review" : session.school.name}
             </p>
           </div>
         </div>
@@ -57,7 +58,7 @@ export function AppLayout() {
           ))}
         </nav>
 
-        <SyncIndicator />
+        {!superadmin && <SyncIndicator />}
         <div className="border-t border-slate-200 p-3">
           <div className="px-2 py-1.5">
             <p className="truncate text-sm font-medium" title={session.user.full_name}>
@@ -78,7 +79,7 @@ export function AppLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col print:block">
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-8 print:hidden">
-          <h1 className="text-lg font-semibold">{current?.label ?? "Clinilog"}</h1>
+          <h1 className="text-lg font-semibold">{superadmin && location.pathname.startsWith("/requests/") ? "Review payment" : current?.label ?? "Clinilog"}</h1>
           <div className="flex items-center gap-3">
           {plan && (
             <span
@@ -94,10 +95,12 @@ export function AppLayout() {
           <WindowControls />
           </div>
         </header>
-        <div className="print:hidden">
-          <OfflineBanner />
-          <PlanBanner />
-        </div>
+        {!superadmin && (
+          <div className="print:hidden">
+            <OfflineBanner />
+            <PlanBanner />
+          </div>
+        )}
         <main className="flex-1 overflow-y-auto px-8 py-6 print:overflow-visible print:p-0">
           <ErrorBoundary resetKey={location.pathname}>
             <Outlet />

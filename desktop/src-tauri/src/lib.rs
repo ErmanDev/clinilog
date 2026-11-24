@@ -38,6 +38,13 @@ pub(crate) struct Session {
     pub(crate) auth_failed: bool,
 }
 
+impl Session {
+    /// The Clinilog superadmin only reviews payments: no clinic data is cached or synced.
+    pub(crate) fn is_superadmin(&self) -> bool {
+        self.user.role == "superadmin"
+    }
+}
+
 pub(crate) struct AppState {
     pub(crate) config: Result<config::AppConfig, String>,
     api: Option<Api>,
@@ -195,7 +202,9 @@ async fn login(app: tauri::AppHandle, state: State<'_, AppState>, username: Stri
     match api.login(school_id, &username, &password).await {
         Ok(res) => {
             // Remember a password check value (never the password) for offline login.
-            if let (Some(c), Some(hash)) = (state.cache.as_ref(), hash_password(password.clone()).await) {
+            // Not for the superadmin: that account only works online.
+            let superadmin = res.user.role == "superadmin";
+            if let (false, Some(c), Some(hash)) = (superadmin, state.cache.as_ref(), hash_password(password.clone()).await) {
                 let _ = c.save_credentials(
                     &username,
                     &cache::Credentials { user: res.user.clone(), school: res.school.clone(), password_hash: hash, saved_at: Utc::now() },
@@ -294,13 +303,16 @@ fn current_session(state: State<'_, AppState>) -> Option<SessionInfo> {
 /// The school's plan: from the server, or the last known plan while offline (7-day grace).
 #[tauri::command]
 async fn fetch_plan(state: State<'_, AppState>) -> Result<plan::PlanState, CmdError> {
-    let school_id = state
+    let (school_id, superadmin) = state
         .session
         .lock()
         .unwrap()
         .as_ref()
-        .map(|s| s.school.id)
+        .map(|s| (s.school.id, s.is_superadmin()))
         .ok_or_else(CmdError::unauthorized)?;
+    if superadmin {
+        return Err(CmdError::new("invalid", "The superadmin account has no school plan."));
+    }
     let data_dir = state.data_dir.as_deref();
     let fetched = match state.ensure_token().await {
         Ok(token) => state.api()?.get_authed::<SubscriptionInfo>(&token, "subscription").await,

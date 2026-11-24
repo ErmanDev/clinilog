@@ -2,7 +2,7 @@ import { CircleCheck, CircleSlash, Eye, EyeOff, KeyRound, Loader2, Pencil, Plus,
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ConfirmDialog, Dialog } from "../components/Dialog";
 import { buttonClass, ErrorNotice, Field, inputClass, SelectField, TextField } from "../components/form";
-import { asCmdError, usersApi, type Account, type Role } from "../lib/api";
+import { asCmdError, usersApi, type Account, type AccountRole } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { usePlan, useSession } from "../lib/session";
 import { validateFullName, validatePassword, validateUsername } from "../lib/validation";
@@ -258,7 +258,7 @@ function AddUserDialog({ onClose, onDone }: { onClose: () => void; onDone: (u: A
         full_name: f.values.full_name,
         username: f.values.username,
         password: f.values.password,
-        role: f.values.role as Role,
+        role: f.values.role as AccountRole,
       });
       onDone(u);
     } catch (err) {
@@ -315,7 +315,7 @@ function EditUserDialog({ user, self, onClose, onDone }: { user: Account; self: 
     setSaving(true);
     setFormError(null);
     try {
-      onDone(await usersApi.update(user.id, { full_name: f.values.full_name, role: f.values.role as Role }));
+      onDone(await usersApi.update(user.id, { full_name: f.values.full_name, role: f.values.role as AccountRole }));
     } catch (err) {
       const ce = asCmdError(err);
       if (ce.fields) f.setServerErrors(ce.fields);

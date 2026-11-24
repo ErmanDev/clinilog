@@ -20,6 +20,7 @@ const TABLES: Record<ActivityEntry["table_name"], string> = {
   clinic_visits: "Clinic visit",
   users: "User account",
   subscriptions: "Subscription",
+  subscription_requests: "Payment",
 };
 
 export function ActivityLogPage() {

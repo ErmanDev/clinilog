@@ -110,7 +110,8 @@ pub async fn sync_once(app: &AppHandle) {
 
     let online = api.health_quick().await.is_ok();
     state.online.store(online, Ordering::Relaxed);
-    if !online || state.session.lock().unwrap().is_none() {
+    let skip = state.session.lock().unwrap().as_ref().is_none_or(|s| s.is_superadmin());
+    if !online || skip {
         return;
     }
     let Ok(token) = state.ensure_token().await else { return };

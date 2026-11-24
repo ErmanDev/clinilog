@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, asCmdError, setUnauthorizedHandler, type Features, type PlanState, type SessionInfo } from "./api";
 
 const PLAN_REFRESH_MS = 30 * 60 * 1000;
@@ -26,6 +26,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [plan, setPlan] = useState<PlanState | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [endedReason, setEndedReason] = useState<string | null>(null);
+  // The superadmin has no school plan; skip plan checks for that account.
+  const superadminRef = useRef(false);
 
   const reset = useCallback((reason: string | null = null) => {
     setSession(null);
@@ -37,6 +39,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshPlan = useCallback(async () => {
+    if (superadminRef.current) return;
     try {
       setPlan(await api.fetchPlan());
       setPlanError(null);
@@ -59,6 +62,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       .currentSession()
       .then((s) => {
         if (!s) return reset(null);
+        superadminRef.current = s.user.role === "superadmin";
         setSession(s);
         setStatus("signed_in");
         void refreshPlan();
@@ -75,6 +79,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (username: string, password: string) => {
       const s = await api.login(username, password); // throws CmdError
+      superadminRef.current = s.user.role === "superadmin";
       setEndedReason(null);
       setSession(s);
       setStatus("signed_in");

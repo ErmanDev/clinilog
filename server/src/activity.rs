@@ -19,7 +19,7 @@ use crate::{
 };
 
 const MAX_PAGE_SIZE: i64 = 100;
-const TABLES: &[&str] = &["students", "clinic_visits", "users", "subscriptions"];
+const TABLES: &[&str] = &["students", "clinic_visits", "users", "subscriptions", "subscription_requests"];
 const ACTIONS: &[&str] = &["view", "create", "update", "delete"];
 
 #[derive(Deserialize)]
@@ -102,8 +102,12 @@ pub async fn list(State(state): State<AppState>, admin: AuthUser, Query(q): Quer
                        FROM users u2 WHERE u2.id = a.record_id AND u2.school_id = a.school_id)
                   WHEN 'subscriptions' THEN
                     (SELECT initcap(sb.plan) || ' plan, ' || to_char(sb.start_date, 'Mon DD, YYYY')
-                            || ' – ' || to_char(sb.end_date, 'Mon DD, YYYY') || ' (demo checkout)'
+                            || ' – ' || to_char(sb.end_date, 'Mon DD, YYYY')
                        FROM subscriptions sb WHERE sb.id = a.record_id AND sb.school_id = a.school_id)
+                  WHEN 'subscription_requests' THEN
+                    (SELECT initcap(r.plan) || ' ' || r.term || ' payment, ₱' || to_char(r.amount_php, 'FM999,999')
+                            || ', ref ' || r.reference_no || ' (' || r.status || ')'
+                       FROM subscription_requests r WHERE r.id = a.record_id AND r.school_id = a.school_id)
                 END AS record_label,
                 count(*) OVER () AS total
            FROM activity_log a

@@ -88,6 +88,11 @@ pub async fn login(
         return Err(AppError::LoginLocked { retry_after_secs: secs });
     }
 
+    // The superadmin signs in from any school's app with the username set on the server.
+    if let Some(sa) = state.superadmin.clone().filter(|sa| sa.username == username) {
+        return superadmin_login(&state, req.school_id, &username, req.password, sa).await;
+    }
+
     let row: Option<LoginRow> = sqlx::query_as(
         "SELECT id, full_name, username, role, password_hash, is_active
            FROM users
@@ -130,6 +135,7 @@ pub async fn login(
     let role_str = match user.role {
         Role::Admin => "admin",
         Role::Staff => "staff",
+        Role::Superadmin => return Err(AppError::Unauthorized(BAD_CREDENTIALS.into())),
     };
     let (token, expires_at) = state.jwt.issue(user.id, req.school_id, role_str)?;
 
@@ -146,6 +152,43 @@ pub async fn login(
             role: user.role,
         },
         school: SchoolInfo { id: req.school_id, name: school_name },
+    }))
+}
+
+async fn superadmin_login(
+    state: &AppState,
+    school_id: Uuid,
+    username: &str,
+    password: String,
+    sa: std::sync::Arc<super::superadmin::Superadmin>,
+) -> AppResult<Json<LoginResponse>> {
+    let checker = sa.clone();
+    let ok = tokio::task::spawn_blocking(move || checker.check_password(&password))
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+    if !ok {
+        return Err(record_failure(state, school_id, username).await?);
+    }
+    sqlx::query("DELETE FROM login_attempts WHERE school_id = $1 AND username = $2")
+        .bind(school_id)
+        .bind(username)
+        .execute(&state.db)
+        .await?;
+    // No school: the token can't reach any school's records (see `require_auth`).
+    let (token, expires_at) = state.jwt.issue(sa.session_id, Uuid::nil(), super::superadmin::ROLE)?;
+    tracing::info!(%school_id, "superadmin login succeeded");
+    Ok(Json(LoginResponse {
+        token,
+        token_type: "Bearer",
+        expires_at,
+        user: UserInfo {
+            id: sa.session_id,
+            full_name: super::superadmin::FULL_NAME.into(),
+            username: sa.username.clone(),
+            role: Role::Superadmin,
+        },
+        // The app's school id, so the app can sign back in by itself when the token expires.
+        school: SchoolInfo { id: school_id, name: "Clinilog".into() },
     }))
 }
 
