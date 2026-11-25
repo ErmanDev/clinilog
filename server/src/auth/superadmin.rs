@@ -10,9 +10,26 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use std::{
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 use uuid::Uuid;
 
 use crate::{error::AppError, AppState};
+
+/// Same lockout rule as school accounts: 5 wrong passwords within 15 minutes lock it for 5.
+const MAX_FAILURES: u32 = 5;
+const FAILURE_WINDOW: Duration = Duration::from_secs(15 * 60);
+const LOCK_FOR: Duration = Duration::from_secs(5 * 60);
+
+/// Failed attempts, kept in memory: the superadmin isn't tied to any school's rows.
+#[derive(Default)]
+struct Attempts {
+    count: u32,
+    last_failed: Option<Instant>,
+    locked_until: Option<Instant>,
+}
 
 pub const ROLE: &str = "superadmin";
 pub const FULL_NAME: &str = "Clinilog Superadmin";
@@ -28,6 +45,7 @@ pub struct Superadmin {
     /// Goes in the token as `sub`. Derived from the username and password, so it stays
     /// the same across restarts and changing the password signs every session out.
     pub session_id: Uuid,
+    attempts: Mutex<Attempts>,
 }
 
 fn derive(input: &[u8], salt: &[u8], out: &mut [u8]) -> Result<()> {
@@ -62,7 +80,37 @@ impl Superadmin {
         derive(password.as_bytes(), VERIFIER_SALT, &mut verifier)?;
         let mut sid = [0u8; 16];
         derive(format!("{username}\n{password}").as_bytes(), SESSION_SALT, &mut sid)?;
-        Ok(Self { username, verifier, session_id: Uuid::from_bytes(sid) })
+        Ok(Self { username, verifier, session_id: Uuid::from_bytes(sid), attempts: Mutex::default() })
+    }
+
+    /// Seconds left on a lock, if locked.
+    pub fn locked_secs(&self) -> Option<i64> {
+        let a = self.attempts.lock().unwrap();
+        a.locked_until
+            .and_then(|t| t.checked_duration_since(Instant::now()))
+            .map(|d| d.as_secs().max(1) as i64)
+    }
+
+    /// Counts a wrong password. Returns the lock length in seconds if this one locked it.
+    pub fn record_failure(&self) -> Option<i64> {
+        let mut a = self.attempts.lock().unwrap();
+        let now = Instant::now();
+        if a.last_failed.is_none_or(|t| now.duration_since(t) > FAILURE_WINDOW) {
+            a.count = 0;
+        }
+        a.count += 1;
+        a.last_failed = Some(now);
+        if a.count >= MAX_FAILURES {
+            a.count = 0;
+            a.locked_until = Some(now + LOCK_FOR);
+            tracing::warn!("superadmin login locked after repeated failures");
+            return Some(LOCK_FOR.as_secs() as i64);
+        }
+        None
+    }
+
+    pub fn clear_failures(&self) {
+        *self.attempts.lock().unwrap() = Attempts::default();
     }
 
     /// Case-sensitive password check. Slow on purpose (Argon2), like a normal login.
@@ -138,6 +186,18 @@ mod tests {
         let c = Superadmin::new("superadmin", "Clinilog2026!y").unwrap();
         assert_eq!(a.session_id, b.session_id);
         assert_ne!(a.session_id, c.session_id);
+    }
+
+    #[test]
+    fn locks_after_five_failures() {
+        let sa = Superadmin::new("superadmin", "Clinilog2026!x").unwrap();
+        for _ in 0..4 {
+            assert!(sa.record_failure().is_none());
+        }
+        assert_eq!(sa.record_failure(), Some(300));
+        assert!(sa.locked_secs().is_some());
+        sa.clear_failures();
+        assert!(sa.locked_secs().is_none());
     }
 
     #[test]

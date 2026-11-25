@@ -38,7 +38,8 @@ When the server starts, it applies any pending migrations by itself. You don't n
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
 | GET | `/health` | public | Server and database check |
-| POST | `/auth/login` | public | Body `{ school_id, username, password }`. Returns a Bearer token |
+| POST | `/auth/login` | public | Body `{ school_id, username, password }`. Returns a Bearer token. `school_id` may be left out only for the superadmin |
+| GET | `/schools/lookup?code=` | public | Find a school by its code (e.g. `VNHS`). The app calls it once and remembers the school |
 | GET | `/auth/me` | signed in | The current user and school |
 | GET | `/subscription` | signed in | Plan, expiry, read-only flag, limits and Premium features |
 | GET | `/sections` | signed in | Sections, with student counts |
@@ -97,9 +98,19 @@ Subscriptions (paid by GCash, approved by the superadmin):
 - **Expired plans.** Schools can send payments while read-only, because that's when they renew.
 - **Activity log.** Requests and cancellations are logged with table `subscription_requests`.
 
+Schools (multi-school / SaaS):
+- Each school has a unique **school code**: 3–20 upper-case letters, digits or hyphens, e.g. `VNHS`. The first school (seeded) is `VNHS`.
+- The superadmin creates a school with `POST /superadmin/schools` and `{ name, code, address, full_name, username, password }`. That also creates its first admin and copies in the usual medicines. Sections and staff are added by the school's admin.
+- **Free trial.** A new school starts on **Basic for 30 days** (today plus 29 days), stored as a subscription with `is_trial = true`. `GET /subscription` reports `is_trial`, and the app shows a "Free trial: N days left" banner.
+- **When the trial ends** without payment, the school is read-only like any expired plan, and the admin can still pay.
+  - Paying for Basic during the trial starts the day after the trial ends.
+  - Paying for Premium starts on approval and ends the trial.
+- Usernames only need to be unique **within** a school, so every school can have its own `admin`.
+
 Superadmin:
 - One Clinilog-wide account, set on the server with `SUPERADMIN_USERNAME` (default `superadmin`) and `SUPERADMIN_PASSWORD`. The password needs 12+ characters with a letter and a number, or the server won't start. If `SUPERADMIN_PASSWORD` is unset, the superadmin login is off.
-- They log in from any school's desktop app with that username. The app then shows only **Payment Requests** and **Schools**.
+- They log in from any copy of the desktop app, with or without a school set (**Clinilog superadmin? Log in here** on the school-code screen). The app then shows only **Payment Requests** and **Schools**.
+- Five wrong passwords lock the superadmin login for 5 minutes. The lock is kept in memory, so restarting the server clears it.
 - The account can't open any school's records: `require_auth` rejects its token. Its routes are under `/superadmin/*`.
 - Changing the password signs the superadmin out everywhere. Schools can't create a user with the superadmin's username.
 
@@ -135,7 +146,7 @@ Rules for clinic visits:
 | GET | `/superadmin/requests?status=` | superadmin | Payment requests (`pending` by default, or `approved`, `rejected`, `cancelled`, `all`) |
 | GET | `/superadmin/requests/{id}` | superadmin | One request with its receipt image and the school's current plan |
 | POST | `/superadmin/requests/{id}/approve`, `/reject` | superadmin | Approve (starts the plan) or reject (`{ note }` required) |
-| GET | `/superadmin/schools` | superadmin | Every school with its plan, expiry and pending payments |
+| GET, POST | `/superadmin/schools` | superadmin | Every school with its plan, trial, expiry, usage and pending payments; or create a school with its first admin |
 
 Sign-in rules:
 - Usernames are case-insensitive. Passwords are case-sensitive.
@@ -151,9 +162,9 @@ The API runs on Render from `render.yaml`. That Blueprint creates a Docker web s
 1. In Render, choose **New → Blueprint**, connect GitHub, and pick this repo.
 2. When asked, enter **`SEED_ADMIN_PASSWORD`**. This becomes the first admin's password: at least 8 characters, with a letter and a number.
 3. Click **Apply**. The first Docker build takes about 5–10 minutes.
-4. Open the **clinilog-api** service, then **Logs**, and find the `seeded first school … school_id=…` line. Copy the `school_id`.
+4. Open the **clinilog-api** service, then **Logs**, and find the `seeded first school … school_id=…` line. The first school's code is `VNHS`.
 5. Check `https://<service>.onrender.com/health`. It should return `{"status":"ok","database":"ok"}`.
-6. Build the desktop app with that URL and `school_id` (see [Building the installer](#building-the-installer)).
+6. Build the desktop app with that URL (see [Building the installer](#building-the-installer)). Add more schools as the superadmin under **Schools → Add school**.
 
 Notes:
 - `JWT_SECRET` is generated by Render, and `DATABASE_URL` is linked to the database automatically. Neither is ever in the code.
@@ -168,17 +179,17 @@ Notes:
 
 Requirements: Node 20 or newer, Rust (stable, MSVC on Windows) and WebView2 (included with Windows 11).
 
-Each installation needs two settings:
+Settings:
 
 | Setting | Build-time env var | Notes |
 | --- | --- | --- |
 | Server URL | `CLINILOG_API_URL` | Release builds require `https://`. Debug builds default to `http://localhost:8080` |
-| School ID | `CLINILOG_SCHOOL_ID` | The school's `id` from the `schools` table. Staff never type it |
+| School | `CLINILOG_SCHOOL_ID` (optional) | **Leave it out** for one installer that works for every school: on first launch the app asks for the school code. Set it only to lock an installer to one school |
 
-A `config.json` in the app's config folder overrides both settings without a rebuild. On Windows the file is `%APPDATA%\com.clinilog.desktop\config.json`:
+When someone enters a school code, the app saves the school in `config.json` in its config folder: `%APPDATA%\com.clinilog.desktop\config.json` on Windows. **Change school** on the login screen forgets it. That's refused while visits recorded on the PC still need to upload. The file can also set the server URL without a rebuild:
 
 ```json
-{ "api_url": "https://clinilog-api.onrender.com", "school_id": "…" }
+{ "api_url": "https://clinilog-api.onrender.com", "school_id": "…", "school_name": "…", "school_code": "VNHS" }
 ```
 
 Run in development (with the server running):
@@ -186,7 +197,7 @@ Run in development (with the server running):
 ```sh
 cd desktop
 npm install
-CLINILOG_SCHOOL_ID=<school uuid> npm run tauri dev
+npm run tauri dev
 ```
 
 To build the Windows installers, see [Building the installer](#building-the-installer) below.
@@ -215,12 +226,14 @@ Requirements:
 ```sh
 cd desktop
 npm install
-CLINILOG_API_URL=https://<your-service>.onrender.com CLINILOG_SCHOOL_ID=<school uuid> npm run tauri build
+CLINILOG_API_URL=https://<your-service>.onrender.com npm run tauri build
 ```
+
+This one installer works for every school; each school types its code once. Add `CLINILOG_SCHOOL_ID=<school uuid>` only to make an installer locked to one school.
 
 The installers are written to `desktop/src-tauri/target/release/bundle/` (`msi/` and `nsis/`). The first build downloads the WiX and NSIS tools.
 
-The URL and school ID are built into the app, so always rebuild after changing them. Old files in `bundle/` are only replaced when a build succeeds.
+The URL (and the school ID, if set) are built into the app, so always rebuild after changing them. Old files in `bundle/` are only replaced when a build succeeds.
 
 If the `.msi` step fails with `light.exe : error LGHT0001 : JIT Compiler encountered an internal limitation`, run the same command again. This is an occasional crash in the .NET runtime WiX uses, not a problem in the code. To build only the `-setup.exe`, add `-- --bundles nsis`.
 

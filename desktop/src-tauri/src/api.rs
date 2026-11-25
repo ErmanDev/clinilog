@@ -92,6 +92,9 @@ pub struct Features {
 pub struct SubscriptionInfo {
     pub plan: String,
     pub status: String,
+    /// The free trial a new school starts with. Missing in plans cached by older versions.
+    #[serde(default)]
+    pub is_trial: bool,
     pub start_date: Option<NaiveDate>,
     pub end_date: Option<NaiveDate>,
     pub days_left: Option<i64>,
@@ -165,7 +168,28 @@ impl Api {
         }
     }
 
-    pub async fn login(&self, school_id: Uuid, username: &str, password: &str) -> Result<LoginResponse, CmdError> {
+    /// Finds a school by its code (no login needed).
+    pub async fn lookup_school(&self, code: &str) -> Result<crate::config::SchoolRef, CmdError> {
+        #[derive(Deserialize)]
+        struct Found {
+            id: Uuid,
+            name: String,
+            code: String,
+        }
+        let mut url = self.url("schools/lookup")?;
+        url.query_pairs_mut().append_pair("code", code.trim());
+        let res = self.http.get(url).timeout(Duration::from_secs(60)).send().await.map_err(|_| CmdError::network())?;
+        match res.status() {
+            s if s.is_success() => {
+                let f: Found = res.json().await.map_err(|_| bad_response())?;
+                Ok(crate::config::SchoolRef { id: f.id, name: Some(f.name), code: Some(f.code) })
+            }
+            other => Err(map_status(other, res).await),
+        }
+    }
+
+    /// `school_id` is `None` only for the superadmin, who isn't part of a school.
+    pub async fn login(&self, school_id: Option<Uuid>, username: &str, password: &str) -> Result<LoginResponse, CmdError> {
         let body = serde_json::json!({ "school_id": school_id, "username": username, "password": password });
         let res = self
             .http
@@ -280,7 +304,7 @@ mod subscription_tests {
 
     fn server_json() -> serde_json::Value {
         json!({
-            "plan": "basic", "status": "active", "start_date": "2026-01-01", "end_date": "2026-12-31",
+            "plan": "basic", "status": "active", "is_trial": true, "start_date": "2026-01-01", "end_date": "2026-12-31",
             "days_left": 40, "read_only": false,
             "limits": { "max_students": 500, "max_users": 2 },
             "features": { "advanced_search": false, "detailed_reports": false, "daily_backups": false },

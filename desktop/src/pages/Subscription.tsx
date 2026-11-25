@@ -102,7 +102,9 @@ export function SubscriptionPage() {
         <Card title="Current subscription" action={refreshButton}>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm md:grid-cols-4">
             <Item label="Plan">{planLabel(info.plan)}</Item>
-            <Item label="Status">{STATUS_LABEL[info.status] ?? info.status}</Item>
+            <Item label="Status">
+              {info.is_trial ? (info.read_only ? "Free trial ended" : "Free trial") : (STATUS_LABEL[info.status] ?? info.status)}
+            </Item>
             <Item label="Valid from">{info.start_date ? formatDate(info.start_date) : "—"}</Item>
             <Item label="Valid until">{info.end_date ? formatDate(info.end_date) : "—"}</Item>
             <Item label="Student records">
@@ -172,6 +174,7 @@ export function SubscriptionPage() {
                 term={term}
                 currentPlan={info?.plan}
                 currentActive={!!info && !info.read_only}
+                trial={!!info?.is_trial}
                 blocked={!!pending}
                 onChoose={() => setPaying(p)}
               />
@@ -194,7 +197,7 @@ export function SubscriptionPage() {
           option={paying}
           term={term}
           payment={plans.payment}
-          current={{ plan: info.plan, active: !info.read_only, end: info.end_date }}
+          current={{ plan: info.plan, active: !info.read_only, end: info.end_date, trial: info.is_trial }}
           onClose={() => setPaying(null)}
           onSent={() => void loadRequests()}
         />
@@ -270,6 +273,7 @@ function PlanCard({
   term,
   currentPlan,
   currentActive,
+  trial,
   blocked,
   onChoose,
 }: {
@@ -277,6 +281,8 @@ function PlanCard({
   term: Term;
   currentPlan?: PlanName;
   currentActive: boolean;
+  /** The school is on its free trial. */
+  trial: boolean;
   /** A payment is already waiting for review. */
   blocked: boolean;
   onChoose: () => void;
@@ -284,7 +290,11 @@ function PlanCard({
   const isCurrent = currentPlan === option.plan;
   const premium = option.plan === "premium";
   const price = term === "monthly" ? option.monthly_php : option.yearly_php;
-  const action = isCurrent ? `Renew ${planLabel(option.plan)}` : premium ? "Upgrade to Premium" : "Switch to Basic";
+  const action = isCurrent
+    ? `${trial ? "Continue with" : "Renew"} ${planLabel(option.plan)}`
+    : premium
+      ? "Upgrade to Premium"
+      : "Switch to Basic";
   const saving = option.monthly_php * 12 - option.yearly_php;
 
   return (
@@ -293,7 +303,8 @@ function PlanCard({
         <h3 className="text-lg font-semibold">{planLabel(option.plan)}</h3>
         {isCurrent && (
           <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800 ring-1 ring-teal-200">
-            <CircleCheck className="size-3" aria-hidden /> {currentActive ? "Current plan" : "Your plan (ended)"}
+            <CircleCheck className="size-3" aria-hidden />{" "}
+            {trial ? (currentActive ? "Free trial" : "Trial ended") : currentActive ? "Current plan" : "Your plan (ended)"}
           </span>
         )}
       </div>
@@ -330,11 +341,15 @@ function PlanCard({
 }
 
 /** When the new plan would start if approved today, mirroring the server's rule. */
-function startText(option: PlanOption, current: { plan: PlanName; active: boolean; end: string | null }) {
+function startText(option: PlanOption, current: { plan: PlanName; active: boolean; end: string | null; trial: boolean }) {
   if (current.active && current.plan === option.plan && current.end) {
-    return `Adds to your current plan — continues after ${formatDate(current.end)}`;
+    return current.trial
+      ? `Starts when your free trial ends, after ${formatDate(current.end)}`
+      : `Adds to your current plan — continues after ${formatDate(current.end)}`;
   }
-  if (current.active) return `Starts on approval and replaces your ${planLabel(current.plan)} plan`;
+  if (current.active) {
+    return current.trial ? "Starts on approval and ends your free trial" : `Starts on approval and replaces your ${planLabel(current.plan)} plan`;
+  }
   return "Starts on approval";
 }
 
@@ -349,7 +364,7 @@ function PayDialog({
   option: PlanOption;
   term: Term;
   payment: PaymentInfo;
-  current: { plan: PlanName; active: boolean; end: string | null };
+  current: { plan: PlanName; active: boolean; end: string | null; trial: boolean };
   onClose: () => void;
   onSent: () => void;
 }) {
@@ -438,7 +453,7 @@ function PayDialog({
       open
       wide
       onClose={() => !busy && onClose()}
-      title={`${current.plan === option.plan ? "Renew" : "Get"} ${planLabel(option.plan)} — ${term === "monthly" ? "monthly" : "yearly"}`}
+      title={`${current.plan === option.plan && !current.trial ? "Renew" : "Get"} ${planLabel(option.plan)} — ${term === "monthly" ? "monthly" : "yearly"}`}
       footer={
         <>
           <button type="button" className={buttonClass("secondary")} onClick={onClose} disabled={busy}>

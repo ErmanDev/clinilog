@@ -31,6 +31,30 @@ export function PlanBanner() {
     );
   }
 
+  if (info.is_trial) {
+    const choose = isAdmin ? (
+      <Link to="/subscription" className="font-semibold underline">
+        Choose a plan
+      </Link>
+    ) : (
+      "Ask your clinic admin to choose a plan."
+    );
+    if (info.read_only) {
+      return (
+        <Banner tone="danger" icon={<AlertTriangle className="size-4" />}>
+          Your free trial has ended. You can still view records, but can't add or change them. {choose}
+        </Banner>
+      );
+    }
+    if (info.days_left !== null && info.end_date) {
+      return (
+        <Banner tone={info.days_left <= 7 ? "warn" : "info"} icon={<Info className="size-4" />}>
+          Free trial: {info.days_left} day{info.days_left === 1 ? "" : "s"} left (until {formatDate(info.end_date)}). {choose}
+        </Banner>
+      );
+    }
+  }
+
   if (info.read_only) {
     const renew = isAdmin ? (
       <Link to="/subscription" className="font-semibold underline">

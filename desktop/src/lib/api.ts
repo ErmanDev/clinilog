@@ -35,6 +35,8 @@ export interface Features {
 export interface SubscriptionInfo {
   plan: PlanName;
   status: "active" | "expired" | "cancelled" | "none";
+  /** The free 30-day trial a new school starts with. */
+  is_trial: boolean;
   start_date: string | null;
   end_date: string | null;
   days_left: number | null;
@@ -53,9 +55,20 @@ export interface PlanState {
   grace_expired: boolean;
 }
 
+/** The school this PC is connected to. */
+export interface SchoolRef {
+  id: string;
+  /** Null for a school built into the installer. */
+  name: string | null;
+  code: string | null;
+}
+
 export interface ConfigInfo {
   api_url: string;
   school_configured: boolean;
+  school: SchoolRef | null;
+  /** The installer was made for one school; it can't be changed. */
+  school_locked: boolean;
   problem: string | null;
   version: string;
 }
@@ -395,11 +408,34 @@ export interface ReviewDetail extends ReviewItem {
 export interface SchoolSummary {
   id: string;
   name: string;
+  code: string;
+  created_at: string;
   plan: PlanName | null;
   status: "active" | "expired" | "cancelled" | null;
+  is_trial: boolean | null;
   end_date: string | null;
+  active_users: number;
+  students: number;
   pending_requests: number;
   last_paid_at: string | null;
+}
+
+export interface NewSchoolInput {
+  name: string;
+  code: string;
+  address: string;
+  /** The school's first admin. */
+  full_name: string;
+  username: string;
+  password: string;
+}
+
+export interface CreatedSchool {
+  school: { id: string; name: string; code: string };
+  admin_username: string;
+  admin_full_name: string;
+  trial_start: string;
+  trial_end: string;
 }
 
 export const superadminApi = {
@@ -409,6 +445,8 @@ export const superadminApi = {
     request<ReviewItem>("POST", `superadmin/requests/${encodeURIComponent(id)}/approve`, { note: note || null }),
   reject: (id: string, note: string) => request<ReviewItem>("POST", `superadmin/requests/${encodeURIComponent(id)}/reject`, { note }),
   schools: () => request<SchoolSummary[]>("GET", "superadmin/schools"),
+  /** A new school and its first admin, on a 30-day Basic trial. */
+  createSchool: (input: NewSchoolInput) => request<CreatedSchool>("POST", "superadmin/schools", input),
 };
 
 // ---------- Admin: users & activity ----------
@@ -546,6 +584,10 @@ export const studentsApi = {
 
 export const api = {
   appConfig: () => call<ConfigInfo>("app_config"),
+  /** Connects this PC to a school by its code and remembers it. */
+  setSchool: (code: string) => call<SchoolRef>("set_school", { code }),
+  /** Forgets the school so another code can be entered (refused while visits wait to upload). */
+  clearSchool: () => call<void>("clear_school"),
   checkServer: () => call<void>("check_server"),
   login: (username: string, password: string) => call<SessionInfo>("login", { username, password }),
   logout: () => call<void>("logout"),

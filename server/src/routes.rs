@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use crate::{
     activity,
     auth::{self, require_admin, require_auth, require_superadmin},
-    medicines, payments, reports, sections, students, subscription, users, visits, AppState,
+    medicines, payments, reports, schools, sections, students, subscription, users, visits, AppState,
 };
 
 /// Route groups:
@@ -21,7 +21,8 @@ use crate::{
 pub fn router(state: AppState) -> Router<AppState> {
     let public = Router::new()
         .route("/health", get(health))
-        .route("/auth/login", post(auth::handlers::login));
+        .route("/auth/login", post(auth::handlers::login))
+        .route("/schools/lookup", get(schools::lookup));
 
     let admin = Router::new()
         .route("/users", get(users::list).post(users::create))
@@ -67,7 +68,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/superadmin/requests/{id}", get(payments::review_get))
         .route("/superadmin/requests/{id}/approve", post(payments::approve))
         .route("/superadmin/requests/{id}/reject", post(payments::reject))
-        .route("/superadmin/schools", get(payments::schools))
+        .route("/superadmin/schools", get(schools::list).post(schools::create))
         .route_layer(middleware::from_fn_with_state(state, require_superadmin));
 
     public.merge(signed_in).merge(superadmin)

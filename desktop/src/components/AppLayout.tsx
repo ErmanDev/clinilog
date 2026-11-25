@@ -35,7 +35,7 @@ export function AppLayout() {
           <div className="min-w-0">
             <p className="text-base font-bold leading-tight tracking-tight">Clinilog</p>
             <p className="truncate text-xs text-slate-500" title={session.school.name}>
-              {superadmin ? "Payment review" : session.school.name}
+              {superadmin ? "Superadmin" : session.school.name}
             </p>
           </div>
         </div>
@@ -89,7 +89,7 @@ export function AppLayout() {
                   : "bg-slate-100 text-slate-700 ring-slate-300"
               }`}
             >
-              {planLabel(plan.info.plan)} plan
+              {planLabel(plan.info.plan)} plan{plan.info.is_trial && " · trial"}
             </span>
           )}
           <WindowControls />

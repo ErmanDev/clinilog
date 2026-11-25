@@ -55,6 +55,8 @@ pub struct SubscriptionInfo {
     pub plan: Plan,
     /// `active`, `expired`, `cancelled`, or `none` if the school has no subscription row.
     pub status: String,
+    /// The free 30-day trial a new school starts with (not a paid period).
+    pub is_trial: bool,
     pub start_date: Option<NaiveDate>,
     /// Last day the subscription is valid (inclusive).
     pub end_date: Option<NaiveDate>,
@@ -81,13 +83,16 @@ pub struct Usage {
 struct Row {
     plan: Plan,
     status: String,
+    is_trial: bool,
     start_date: NaiveDate,
     end_date: NaiveDate,
 }
 
-/// The school's current subscription: the one that ends latest.
+/// The school's current subscription: the period in effect today, valid until the
+/// end of any renewals already paid for.
 pub async fn current(db: &PgPool, school_id: Uuid) -> AppResult<SubscriptionInfo> {
-    let today: NaiveDate = sqlx::query_scalar("SELECT current_date").fetch_one(db).await?;
+    // Philippine date, the same one used when a paid plan is applied.
+    let today = crate::validate::today_ph();
     let (students, active_users): (i64, i64) = sqlx::query_as(
         "SELECT (SELECT count(*) FROM students WHERE school_id = $1),
                 (SELECT count(*) FROM users WHERE school_id = $1 AND is_active)",
@@ -97,24 +102,44 @@ pub async fn current(db: &PgPool, school_id: Uuid) -> AppResult<SubscriptionInfo
     .await?;
     let usage = Usage { students, active_users };
     let row: Option<Row> = sqlx::query_as(
-        "SELECT plan, status, start_date, end_date
+        "SELECT plan, status, is_trial, start_date, end_date
            FROM subscriptions
           WHERE school_id = $1
           -- An active row wins over a cancelled one that happens to end later
-          -- (switching plans cancels the old row).
-          ORDER BY (status = 'active') DESC, end_date DESC
+          -- (switching plans cancels the old row). A renewal paid in advance
+          -- starts later, so the period that has already started comes first.
+          ORDER BY (status = 'active') DESC, (start_date <= $2) DESC, end_date DESC
           LIMIT 1",
     )
     .bind(school_id)
+    .bind(today)
     .fetch_optional(db)
     .await?;
 
     Ok(match row {
-        Some(r) => {
+        Some(mut r) => {
+            if r.status == "active" {
+                // Renewals of the same plan continue straight after this period.
+                let last: Option<NaiveDate> = sqlx::query_scalar(
+                    "SELECT max(end_date) FROM subscriptions
+                      WHERE school_id = $1 AND status = 'active' AND plan = $2 AND start_date > $3",
+                )
+                .bind(school_id)
+                .bind(r.plan)
+                .bind(r.start_date)
+                .fetch_one(db)
+                .await?;
+                if let Some(d) = last.filter(|d| *d > r.end_date) {
+                    r.end_date = d;
+                    // Already paid for what comes after the trial.
+                    r.is_trial = false;
+                }
+            }
             let expired = r.status != "active" || r.end_date < today;
             SubscriptionInfo {
                 plan: r.plan,
                 status: if expired && r.status == "active" { "expired".into() } else { r.status },
+                is_trial: r.is_trial,
                 start_date: Some(r.start_date),
                 end_date: Some(r.end_date),
                 days_left: Some((r.end_date - today).num_days() + 1),
@@ -129,6 +154,7 @@ pub async fn current(db: &PgPool, school_id: Uuid) -> AppResult<SubscriptionInfo
         None => SubscriptionInfo {
             plan: Plan::Basic,
             status: "none".into(),
+            is_trial: false,
             start_date: None,
             end_date: None,
             days_left: None,

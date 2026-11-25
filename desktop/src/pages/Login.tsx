@@ -1,6 +1,6 @@
-import { AlertCircle, Eye, EyeOff, Loader2, RefreshCw, WifiOff } from "lucide-react";
+import { AlertCircle, ArrowLeft, Building2, Eye, EyeOff, Loader2, RefreshCw, WifiOff } from "lucide-react";
 import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
-import { api, asCmdError, type ConfigInfo } from "../lib/api";
+import { api, asCmdError, type ConfigInfo, type SchoolRef } from "../lib/api";
 import { useSession } from "../lib/session";
 import { WindowControls } from "../components/WindowControls";
 import logoMark from "../assets/clinilog-mark.png";
@@ -25,6 +25,8 @@ export function LoginPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  /** Signing in as the Clinilog superadmin on a PC with no school set. */
+  const [superadminMode, setSuperadminMode] = useState(false);
 
   const userId = useId();
   const passId = useId();
@@ -97,6 +99,19 @@ export function LoginPage() {
 
   const onKey = (e: React.KeyboardEvent) => setCapsLock(e.getModifierState("CapsLock"));
 
+  async function changeSchool() {
+    setFormError(null);
+    try {
+      await api.clearSchool();
+      setConfig((c) => (c ? { ...c, school: null, school_configured: false } : c));
+    } catch (err) {
+      setFormError(asCmdError(err).message);
+    }
+  }
+
+  const school = config?.school ?? null;
+  const needsSchool = !!config && !config.problem && !school && !superadminMode;
+
   return (
     <div className="relative flex h-full">
       <div className="absolute top-3 right-3 z-10">
@@ -128,8 +143,46 @@ export function LoginPage() {
             <img src={logoMark} alt="" className="size-9" draggable={false} />
             <span className="text-2xl font-bold tracking-tight text-teal-800">Clinilog</span>
           </div>
-          <h1 className="text-2xl font-semibold">Log in</h1>
-          <p className="mt-1 text-sm text-slate-500">Use the account your clinic admin gave you.</p>
+          {needsSchool ? (
+            <>
+              <h1 className="text-2xl font-semibold">Connect to your school</h1>
+              <p className="mt-1 text-sm text-slate-500">Enter your school code. You only need to do this once on this PC.</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-semibold">{superadminMode && !school ? "Superadmin log in" : "Log in"}</h1>
+              {superadminMode && !school ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSuperadminMode(false);
+                    setFormError(null);
+                  }}
+                  className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-teal-700 hover:underline"
+                >
+                  <ArrowLeft className="size-3.5" aria-hidden /> Back to school code
+                </button>
+              ) : (
+                <p className="mt-1 text-sm text-slate-500">Use the account your clinic admin gave you.</p>
+              )}
+              {school?.name && (
+                <div className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-slate-100 px-3 py-2 text-sm">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Building2 className="size-4 shrink-0 text-slate-500" aria-hidden />
+                    <span className="truncate font-medium" title={school.name}>
+                      {school.name}
+                    </span>
+                    {school.code && <span className="shrink-0 font-mono text-xs text-slate-500">{school.code}</span>}
+                  </span>
+                  {!config?.school_locked && (
+                    <button type="button" onClick={() => void changeSchool()} className="shrink-0 text-xs font-semibold text-teal-700 hover:underline">
+                      Change school
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
 
           {endedReason && (
             <Notice tone="warn" icon={<AlertCircle className="size-4" />}>
@@ -144,6 +197,13 @@ export function LoginPage() {
             <ConnectionStatus conn={conn} onRetry={() => void connect()} />
           )}
 
+          {needsSchool ? (
+            <SchoolCodeForm
+              disabled={conn.state === "checking"}
+              onConnected={(s) => setConfig((c) => (c ? { ...c, school: s, school_configured: true } : c))}
+              onSuperadmin={() => setSuperadminMode(true)}
+            />
+          ) : (
           <form onSubmit={onSubmit} noValidate className="mt-6 space-y-5">
             <div>
               <label htmlFor={userId} className="block text-sm font-medium text-slate-700">
@@ -215,11 +275,93 @@ export function LoginPage() {
               {submitting ? "Logging in…" : "Log in"}
             </button>
           </form>
+          )}
 
           {config && <p className="mt-10 text-center text-xs text-slate-400">Clinilog v{config.version}</p>}
         </div>
       </section>
     </div>
+  );
+}
+
+/** First run on a PC: find the school by its code and remember it. */
+function SchoolCodeForm({
+  disabled,
+  onConnected,
+  onSuperadmin,
+}: {
+  disabled: boolean;
+  onConnected: (s: SchoolRef) => void;
+  onSuperadmin: () => void;
+}) {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const id = useId();
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!code.trim()) {
+      setError("Enter your school code.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      onConnected(await api.setSchool(code));
+    } catch (err) {
+      setError(asCmdError(err).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="mt-6 space-y-5">
+      <div>
+        <label htmlFor={id} className="block text-sm font-medium text-slate-700">
+          School code
+        </label>
+        <input
+          id={id}
+          value={code}
+          onChange={(e) => {
+            setCode(e.target.value.toUpperCase());
+            setError(null);
+          }}
+          autoFocus
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={20}
+          placeholder="e.g. VNHS"
+          aria-invalid={!!error}
+          aria-describedby={`${id}-hint`}
+          className={`${inputClass(!!error)} font-mono tracking-wider`}
+        />
+        <p id={`${id}-hint`} className="mt-1.5 text-xs text-slate-500">
+          Your Clinilog provider gives each school its own code.
+        </p>
+      </div>
+      {error && (
+        <Notice tone="danger" icon={<AlertCircle className="size-4" />}>
+          {error}
+        </Notice>
+      )}
+      <button
+        type="submit"
+        disabled={busy || disabled}
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+      >
+        {busy && <Loader2 className="size-4 animate-spin" aria-hidden />}
+        {busy ? "Finding your school…" : "Continue"}
+      </button>
+      <p className="text-center text-xs text-slate-500">
+        Clinilog superadmin?{" "}
+        <button type="button" onClick={onSuperadmin} className="font-semibold text-teal-700 hover:underline">
+          Log in here
+        </button>
+      </p>
+    </form>
   );
 }
 

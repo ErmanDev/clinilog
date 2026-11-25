@@ -48,7 +48,7 @@ pub fn status(state: &AppState) -> SyncStatus {
     let session = state.session.lock().unwrap();
     let (user_id, school_id, session_offline, auth_required) = match session.as_ref() {
         Some(s) => (Some(s.user.id), Some(s.school.id), s.token.is_none(), s.auth_failed),
-        None => (None, state.config.as_ref().ok().and_then(|c| c.school_id), false, false),
+        None => (None, state.school_id(), false, false),
     };
     drop(session);
     let (mut pending, mut failed, mut others, mut refreshed) = (0, 0, 0, None);

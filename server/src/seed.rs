@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::auth::password;
 
 pub const SCHOOL_NAME: &str = "Valencia National High School";
+const SCHOOL_CODE: &str = "VNHS";
 const SCHOOL_ADDRESS: &str = "Valencia City, Bukidnon";
 const ADMIN_FULL_NAME: &str = "Clinic Administrator";
 
@@ -33,7 +34,8 @@ const SAMPLE_SECTIONS: &[(i32, &str)] = &[
 ];
 
 /// (name, unit) — common school-clinic stock; admins edit the list in Settings.
-const SAMPLE_MEDICINES: &[(&str, &str)] = &[
+/// New schools made by the superadmin start with this list too.
+pub const SAMPLE_MEDICINES: &[(&str, &str)] = &[
     ("Paracetamol 500 mg", "tablet"),
     ("Mefenamic Acid 500 mg", "capsule"),
     ("Cetirizine 10 mg", "tablet"),
@@ -71,9 +73,10 @@ pub async fn run(pool: &PgPool, username: &str, admin_password: &str) -> Result<
     let password_hash = password::hash(admin_password)?;
 
     let mut tx = pool.begin().await?;
-    let school_id: Uuid = sqlx::query_scalar("INSERT INTO schools (name, address) VALUES ($1, $2) RETURNING id")
+    let school_id: Uuid = sqlx::query_scalar("INSERT INTO schools (name, address, code) VALUES ($1, $2, $3) RETURNING id")
         .bind(SCHOOL_NAME)
         .bind(SCHOOL_ADDRESS)
+        .bind(SCHOOL_CODE)
         .fetch_one(&mut *tx)
         .await?;
 

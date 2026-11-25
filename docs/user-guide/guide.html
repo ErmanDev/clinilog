@@ -174,7 +174,16 @@
   <li>If Windows shows <b>"Windows protected your PC"</b>, click <span class="ui">More info</span>, then <span class="ui">Run anyway</span>. (This appears because the installer isn't signed with a paid certificate; it's safe.)</li>
   <li>Follow the installer. When it finishes, open <b>Clinilog</b> from the Start menu or the desktop shortcut.</li>
 </ol>
-<p>The app is already set up for your school: there is nothing to type in during installation. Install it on every clinic PC that needs it; all of them share the same records.</p>
+<p>Install it on every clinic PC that needs it; all of them share your school's records.</p>
+
+<h3>Connecting the PC to your school (first time only)</h3>
+<p>The first time Clinilog opens on a PC, it asks for your <b>school code</b>, a short code from your Clinilog provider (for example <code>VNHS</code>).</p>
+<ol class="steps">
+  <li>Type the <b>School code</b>. Capital letters don't matter.</li>
+  <li>Click <span class="ui">Continue</span>. Clinilog finds your school and shows its name above the login boxes.</li>
+</ol>
+<figure class="small"><img src="img/01-school-code.png" alt="" /><figcaption>First launch: enter your school code.</figcaption></figure>
+<p>The PC remembers the school, so you won't be asked again. If the wrong school shows on the login screen, click <span class="ui">Change school</span> and enter the right code. (This isn't allowed while visits recorded on that PC are still waiting to upload.)</p>
 
 <h3>The Clinilog window</h3>
 <p>Clinilog opens <b>full screen</b>. There is no Windows title bar; use the two small buttons in the <b>top-right corner</b> instead:</p>
@@ -184,7 +193,7 @@
 </ul>
 
 <h3>Logging in</h3>
-<figure><img src="img/01-login.png" alt="" /><figcaption>The login screen. The left side shows a short animation of the clinic flow.</figcaption></figure>
+<figure><img src="img/01-login.png" alt="" /><figcaption>The login screen, showing your school's name. The left side shows a short animation of the clinic flow.</figcaption></figure>
 <ol class="steps">
   <li>Wait until any <b>"Connecting to server…"</b> message disappears. The first time each day it can take <b>up to about a minute</b> while the server wakes up. This is normal.</li>
   <li>Type your <b>Username</b> (capital letters don't matter: <code>Nurse_Joy</code> = <code>nurse_joy</code>).</li>
@@ -377,6 +386,7 @@
 
 <!-- ===================== 11 ===================== -->
 <h2 id="s11"><span class="num">11.</span>Subscription <span class="who admin">ADMIN</span></h2>
+<div class="box tip"><p><span class="label">Free trial.</span> A new school starts with a <b>free 30-day trial of the Basic plan</b>. A blue banner shows how many days are left. To keep using Clinilog afterwards, choose a plan and pay before the trial ends. Paying for Basic during the trial starts after the trial ends, so you don't lose any trial days.</p></div>
 <p>This page shows your school's plan and lets you renew, upgrade or switch plans. You pay with <b>GCash</b> by scanning a QR code, then send the receipt. Clinilog checks the payment, and your plan changes once it is <b>approved</b>.</p>
 <figure><img src="img/16-subscription.png" alt="" /><figcaption>Current subscription (top), the plans you can choose, and your payment history (bottom).</figcaption></figure>
 <h3>Paying for a plan</h3>
@@ -476,7 +486,7 @@
   <tr><td>Price (GCash)</td><td class="c">₱150 / month · ₱1,300 / year</td><td class="c">₱300 / month · ₱3,600 / year</td></tr>
 </table>
 <p>Premium-only items stay <b>visible but locked</b> on Basic, marked with a lock and a <b>Premium</b> badge. Clicking one explains what Premium adds.</p>
-<h3>If the subscription expires</h3>
+<h3>If the subscription or free trial expires</h3>
 <ul>
   <li>Everyone sees a red banner: <i>"Your subscription has expired."</i></li>
   <li>All records can still be <b>viewed</b>, searched and reported on. Nothing is deleted.</li>
@@ -518,6 +528,9 @@
   <tr><td>Can't delete a student</td><td>They have clinic visits on record; health records are kept.</td></tr>
   <tr><td>Can't delete a section or medicine</td><td>The section still has students, or the medicine was used in a visit. Move the students first, or rename the medicine.</td></tr>
   <tr><td>A lock or <b>Premium</b> badge</td><td>That feature is part of the Premium plan. An administrator can upgrade under Subscription.</td></tr>
+  <tr><td>"No school has that code"</td><td>Check the school code with your Clinilog provider. Spaces and capital letters don't matter.</td></tr>
+  <tr><td>The wrong school shows on the login screen</td><td>Click <span class="ui">Change school</span> and enter your school's code.</td></tr>
+  <tr><td>"Your free trial has ended"</td><td>An administrator chooses a plan and pays under Subscription (section 11). Records stay viewable meanwhile.</td></tr>
   <tr><td>Paid, but the plan hasn't changed</td><td>The payment is still <b>waiting for review</b>; the plan changes once it's approved. If it says <b>Not approved</b>, read the reason, then send the correct reference number and receipt again.</td></tr>
   <tr><td>"This reference number was already sent"</td><td>Each GCash reference can be used once. Check you typed the number from <i>this</i> payment's receipt.</td></tr>
   <tr><td>Add student / Add user is unavailable</td><td>The plan limit is reached (500 students or 2 accounts on Basic), or the subscription has expired.</td></tr>

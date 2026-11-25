@@ -47,6 +47,9 @@ impl Session {
 
 pub(crate) struct AppState {
     pub(crate) config: Result<config::AppConfig, String>,
+    /// The school this PC is connected to: built in, or chosen with a school code.
+    pub(crate) school: Mutex<Option<config::SchoolRef>>,
+    config_dir: Option<PathBuf>,
     api: Option<Api>,
     data_dir: Option<PathBuf>,
     pub(crate) session: Mutex<Option<Session>>,
@@ -67,12 +70,8 @@ impl AppState {
         }
     }
 
-    fn school_id(&self) -> Result<uuid::Uuid, CmdError> {
-        self.config
-            .as_ref()
-            .ok()
-            .and_then(|c| c.school_id)
-            .ok_or_else(|| CmdError::new("config", "This installation has no school ID."))
+    pub(crate) fn school_id(&self) -> Option<uuid::Uuid> {
+        self.school.lock().unwrap().as_ref().map(|s| s.id)
     }
 
     /// A valid access token, logging back in with the remembered password if needed.
@@ -89,7 +88,8 @@ impl AppState {
             if s.auth_failed {
                 return Err(auth_changed());
             }
-            (s.school.id, s.user.username.clone(), s.password.clone())
+            // The superadmin's session has no school (nil id).
+            (Some(s.school.id).filter(|id| !id.is_nil()), s.user.username.clone(), s.password.clone())
         };
         match self.api()?.login(school_id, &username, &password).await {
             Ok(res) => {
@@ -140,22 +140,75 @@ struct SessionInfo {
 #[tauri::command]
 fn app_config(state: State<'_, AppState>) -> config::ConfigInfo {
     let version = env!("CARGO_PKG_VERSION").to_string();
+    let school = state.school.lock().unwrap().clone();
     match &state.config {
         Ok(c) => config::ConfigInfo {
             api_url: c.api_url.to_string(),
-            school_configured: c.school_id.is_some(),
-            problem: c.school_id.is_none().then(|| {
-                "This installation has no school ID. Ask your Clinilog provider to set it up.".to_string()
-            }),
+            school_configured: school.is_some(),
+            school,
+            school_locked: c.school_locked,
+            problem: None,
             version,
         },
         Err(msg) => config::ConfigInfo {
             api_url: String::new(),
             school_configured: false,
+            school: None,
+            school_locked: false,
             problem: Some(msg.clone()),
             version,
         },
     }
+}
+
+/// Connects this PC to a school by its code (e.g. VNHS) and remembers it.
+#[tauri::command]
+async fn set_school(state: State<'_, AppState>, code: String) -> Result<config::SchoolRef, CmdError> {
+    if state.config.as_ref().is_ok_and(|c| c.school_locked) {
+        return Err(CmdError::new("invalid", "This installation is set up for one school and can't be changed."));
+    }
+    if code.trim().is_empty() {
+        return Err(CmdError::new("invalid", "Enter your school code."));
+    }
+    let school = state.api()?.lookup_school(&code).await?;
+    if let Some(dir) = state.config_dir.as_deref() {
+        config::save_school(dir, Some(&school)).map_err(|m| CmdError::new("server", m))?;
+    }
+    if let Some(c) = state.cache.as_ref() {
+        let _ = c.ensure_school(school.id);
+    }
+    *state.school.lock().unwrap() = Some(school.clone());
+    Ok(school)
+}
+
+/// Disconnects this PC from its school, so a different school code can be entered.
+/// Refused while visits recorded on this PC haven't been uploaded yet.
+#[tauri::command]
+fn clear_school(state: State<'_, AppState>) -> Result<(), CmdError> {
+    if state.config.as_ref().is_ok_and(|c| c.school_locked) {
+        return Err(CmdError::new("invalid", "This installation is set up for one school and can't be changed."));
+    }
+    if state.session.lock().unwrap().is_some() {
+        return Err(CmdError::new("invalid", "Log out first."));
+    }
+    if let (Some(c), Some(id)) = (state.cache.as_ref(), state.school_id()) {
+        let waiting = c.outbox(id).map(|o| o.len()).unwrap_or(0);
+        if waiting > 0 {
+            return Err(CmdError::new(
+                "invalid",
+                format!(
+                    "{waiting} visit{} recorded on this PC still need{} to upload. Log in to this school while online first.",
+                    if waiting == 1 { "" } else { "s" },
+                    if waiting == 1 { "s" } else { "" }
+                ),
+            ));
+        }
+    }
+    if let Some(dir) = state.config_dir.as_deref() {
+        config::save_school(dir, None).map_err(|m| CmdError::new("server", m))?;
+    }
+    *state.school.lock().unwrap() = None;
+    Ok(())
 }
 
 #[tauri::command]
@@ -190,13 +243,14 @@ async fn verify_password(password: String, hash: String) -> bool {
 #[tauri::command]
 async fn login(app: tauri::AppHandle, state: State<'_, AppState>, username: String, password: String) -> Result<SessionInfo, CmdError> {
     let api = state.api()?;
-    let school_id = state.school_id()?;
+    // No school yet: only the superadmin can log in (the server checks).
+    let school_id = state.school_id();
     let username = username.trim().to_string();
     if username.is_empty() || password.is_empty() {
         return Err(CmdError::new("invalid", "Enter your username and password."));
     }
-    if let Some(c) = state.cache.as_ref() {
-        let _ = c.ensure_school(school_id);
+    if let (Some(c), Some(id)) = (state.cache.as_ref(), school_id) {
+        let _ = c.ensure_school(id);
     }
 
     match api.login(school_id, &username, &password).await {
@@ -224,7 +278,10 @@ async fn login(app: tauri::AppHandle, state: State<'_, AppState>, username: Stri
             state.sync_wake.notify_one();
             Ok(info)
         }
-        Err(e) if e.kind == "network" => offline_login(&app, &state, school_id, &username, password).await,
+        Err(e) if e.kind == "network" => match school_id {
+            Some(id) => offline_login(&app, &state, id, &username, password).await,
+            None => Err(e),
+        },
         Err(e) => Err(e),
     }
 }
@@ -365,8 +422,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let paths = app.path();
-            let config = config::load(paths.app_config_dir().ok().as_deref());
+            let config_dir = paths.app_config_dir().ok();
+            let config = config::load(config_dir.as_deref());
             let api = config.as_ref().ok().map(|c| Api::new(c.api_url.clone()));
+            let school = config.as_ref().ok().and_then(|c| c.school.clone());
             let data_dir = paths.app_data_dir().ok();
             let (cache, cache_error) = match data_dir.as_deref().map(cache::Cache::open) {
                 Some(Ok(c)) => (Some(c), None),
@@ -375,6 +434,8 @@ pub fn run() {
             };
             app.manage(AppState {
                 config,
+                school: Mutex::new(school),
+                config_dir,
                 api,
                 data_dir,
                 session: Mutex::new(None),
@@ -390,6 +451,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_config,
+            set_school,
+            clear_school,
             check_server,
             login,
             logout,

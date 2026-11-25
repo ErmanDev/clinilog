@@ -20,8 +20,10 @@ const BAD_CREDENTIALS: &str = "Incorrect username or password.";
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
-    /// Comes from the desktop app's config, not typed by staff.
-    pub school_id: Uuid,
+    /// The school this app is set up for (from its school code). Not needed for
+    /// the superadmin, who isn't part of any school.
+    #[serde(default)]
+    pub school_id: Option<Uuid>,
     pub username: String,
     pub password: String,
 }
@@ -76,21 +78,24 @@ pub async fn login(
         return Err(AppError::Unauthorized(BAD_CREDENTIALS.into()));
     }
 
+    // The superadmin signs in from any copy of the app, with or without a school set.
+    if let Some(sa) = state.superadmin.clone().filter(|sa| sa.username == username) {
+        return superadmin_login(&state, req.password, sa).await;
+    }
+
+    let Some(school_id) = req.school_id.filter(|id| !id.is_nil()) else {
+        return Err(AppError::BadRequest("Enter your school code first.".into()));
+    };
     let school_name: Option<String> = sqlx::query_scalar("SELECT name FROM schools WHERE id = $1")
-        .bind(req.school_id)
+        .bind(school_id)
         .fetch_optional(&state.db)
         .await?;
     let Some(school_name) = school_name else {
         return Err(AppError::Unauthorized(BAD_CREDENTIALS.into()));
     };
 
-    if let Some(secs) = lock_remaining_secs(&state, req.school_id, &username).await? {
+    if let Some(secs) = lock_remaining_secs(&state, school_id, &username).await? {
         return Err(AppError::LoginLocked { retry_after_secs: secs });
-    }
-
-    // The superadmin signs in from any school's app with the username set on the server.
-    if let Some(sa) = state.superadmin.clone().filter(|sa| sa.username == username) {
-        return superadmin_login(&state, req.school_id, &username, req.password, sa).await;
     }
 
     let row: Option<LoginRow> = sqlx::query_as(
@@ -98,7 +103,7 @@ pub async fn login(
            FROM users
           WHERE school_id = $1 AND lower(username) = $2",
     )
-    .bind(req.school_id)
+    .bind(school_id)
     .bind(&username)
     .fetch_optional(&state.db)
     .await?;
@@ -116,7 +121,7 @@ pub async fn login(
     let user = match row {
         Some(r) if password_ok => r,
         _ => {
-            return Err(record_failure(&state, req.school_id, &username).await?);
+            return Err(record_failure(&state, school_id, &username).await?);
         }
     };
 
@@ -127,7 +132,7 @@ pub async fn login(
     }
 
     sqlx::query("DELETE FROM login_attempts WHERE school_id = $1 AND username = $2")
-        .bind(req.school_id)
+        .bind(school_id)
         .bind(&username)
         .execute(&state.db)
         .await?;
@@ -137,9 +142,9 @@ pub async fn login(
         Role::Staff => "staff",
         Role::Superadmin => return Err(AppError::Unauthorized(BAD_CREDENTIALS.into())),
     };
-    let (token, expires_at) = state.jwt.issue(user.id, req.school_id, role_str)?;
+    let (token, expires_at) = state.jwt.issue(user.id, school_id, role_str)?;
 
-    tracing::info!(user_id = %user.id, school_id = %req.school_id, "login succeeded");
+    tracing::info!(user_id = %user.id, school_id = %school_id, "login succeeded");
 
     Ok(Json(LoginResponse {
         token,
@@ -151,32 +156,32 @@ pub async fn login(
             username: user.username,
             role: user.role,
         },
-        school: SchoolInfo { id: req.school_id, name: school_name },
+        school: SchoolInfo { id: school_id, name: school_name },
     }))
 }
 
 async fn superadmin_login(
     state: &AppState,
-    school_id: Uuid,
-    username: &str,
     password: String,
     sa: std::sync::Arc<super::superadmin::Superadmin>,
 ) -> AppResult<Json<LoginResponse>> {
+    if let Some(secs) = sa.locked_secs() {
+        return Err(AppError::LoginLocked { retry_after_secs: secs });
+    }
     let checker = sa.clone();
     let ok = tokio::task::spawn_blocking(move || checker.check_password(&password))
         .await
         .map_err(|e| AppError::Internal(e.into()))?;
     if !ok {
-        return Err(record_failure(state, school_id, username).await?);
+        return Err(match sa.record_failure() {
+            Some(secs) => AppError::LoginLocked { retry_after_secs: secs },
+            None => AppError::Unauthorized(BAD_CREDENTIALS.into()),
+        });
     }
-    sqlx::query("DELETE FROM login_attempts WHERE school_id = $1 AND username = $2")
-        .bind(school_id)
-        .bind(username)
-        .execute(&state.db)
-        .await?;
+    sa.clear_failures();
     // No school: the token can't reach any school's records (see `require_auth`).
     let (token, expires_at) = state.jwt.issue(sa.session_id, Uuid::nil(), super::superadmin::ROLE)?;
-    tracing::info!(%school_id, "superadmin login succeeded");
+    tracing::info!("superadmin login succeeded");
     Ok(Json(LoginResponse {
         token,
         token_type: "Bearer",
@@ -187,8 +192,8 @@ async fn superadmin_login(
             username: sa.username.clone(),
             role: Role::Superadmin,
         },
-        // The app's school id, so the app can sign back in by itself when the token expires.
-        school: SchoolInfo { id: school_id, name: "Clinilog".into() },
+        // No school: the superadmin works across all of them.
+        school: SchoolInfo { id: Uuid::nil(), name: "Clinilog".into() },
     }))
 }
 

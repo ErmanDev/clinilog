@@ -462,38 +462,6 @@ pub async fn reject(
     Ok(Json(review_item(&state.db, id).await?))
 }
 
-#[derive(Serialize, sqlx::FromRow)]
-pub struct SchoolSummary {
-    pub id: Uuid,
-    pub name: String,
-    pub plan: Option<Plan>,
-    pub status: Option<String>,
-    pub end_date: Option<NaiveDate>,
-    pub pending_requests: i64,
-    pub last_paid_at: Option<DateTime<Utc>>,
-}
-
-/// `GET /superadmin/schools` — every school with its current plan.
-pub async fn schools(State(state): State<AppState>, _sa: SuperadminAuth) -> AppResult<Json<Vec<SchoolSummary>>> {
-    let rows = sqlx::query_as(
-        "SELECT sc.id, sc.name, s.plan,
-                CASE WHEN s.status = 'active' AND s.end_date < current_date THEN 'expired' ELSE s.status END AS status,
-                s.end_date,
-                (SELECT count(*) FROM subscription_requests r WHERE r.school_id = sc.id AND r.status = 'pending') AS pending_requests,
-                (SELECT max(r.reviewed_at) FROM subscription_requests r WHERE r.school_id = sc.id AND r.status = 'approved') AS last_paid_at
-           FROM schools sc
-           LEFT JOIN LATERAL (
-                SELECT plan, status, end_date FROM subscriptions
-                 WHERE school_id = sc.id
-                 ORDER BY (status = 'active') DESC, end_date DESC
-                 LIMIT 1) s ON true
-          ORDER BY sc.name",
-    )
-    .fetch_all(&state.db)
-    .await?;
-    Ok(Json(rows))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

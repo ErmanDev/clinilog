@@ -83,6 +83,7 @@ mod tests {
         SubscriptionInfo {
             plan: "basic".into(),
             status: "active".into(),
+            is_trial: false,
             start_date: None,
             end_date: None,
             days_left: Some(100),

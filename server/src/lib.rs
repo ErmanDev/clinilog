@@ -7,6 +7,7 @@ pub mod medicines;
 pub mod payments;
 pub mod reports;
 pub mod routes;
+pub mod schools;
 pub mod search;
 pub mod seed;
 pub mod sections;
