@@ -1,12 +1,24 @@
-import { ChevronLeft, ChevronRight, Eye, Loader2, Pencil, Plus, Trash2, X, type LucideIcon } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Eye, Loader2, Pencil, Plus, Trash2, X, type LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { buttonClass, ErrorNotice, inputClass } from "../components/form";
+import { Pagination } from "../components/Pagination";
 import { activityApi, asCmdError, usersApi, type Account, type ActivityEntry, type ActivityPage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { todayPH } from "../lib/validation";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZES = [25, 50, 100];
+const PAGE_SIZE_KEY = "clinilog.activity.pageSize";
+
+/** The rows-per-page choice is remembered on this PC (falls back to 50). */
+function savedPageSize(): number {
+  try {
+    const n = Number(localStorage.getItem(PAGE_SIZE_KEY));
+    return PAGE_SIZES.includes(n) ? n : 50;
+  } catch {
+    return 50;
+  }
+}
 
 const ACTIONS: Record<ActivityEntry["action"], { label: string; icon: LucideIcon }> = {
   view: { label: "Viewed", icon: Eye },
@@ -31,6 +43,8 @@ export function ActivityLogPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(savedPageSize);
+  const topRef = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<ActivityPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +53,21 @@ export function ActivityLogPage() {
     usersApi.list().then(setUsers).catch(() => {});
   }, []);
 
-  useEffect(() => setPage(1), [userId, action, table, from, to]);
+  useEffect(() => setPage(1), [userId, action, table, from, to, pageSize]);
+
+  function changePageSize(size: number) {
+    setPageSize(size);
+    try {
+      localStorage.setItem(PAGE_SIZE_KEY, String(size));
+    } catch {
+      /* not saved; fine */
+    }
+  }
+
+  function goToPage(p: number) {
+    setPage(p);
+    topRef.current?.scrollIntoView({ block: "start" });
+  }
 
   const rangeError = from && to && from > to ? "The 'from' date must be on or before the 'to' date." : null;
 
@@ -55,7 +83,7 @@ export function ActivityLogPage() {
         date_from: from || undefined,
         date_to: to || undefined,
         page,
-        page_size: PAGE_SIZE,
+        page_size: pageSize,
       })
       .then((d) => !cancelled && (setData(d), setError(null)))
       .catch((e) => !cancelled && setError(asCmdError(e).message))
@@ -63,13 +91,12 @@ export function ActivityLogPage() {
     return () => {
       cancelled = true;
     };
-  }, [userId, action, table, from, to, page, rangeError]);
+  }, [userId, action, table, from, to, page, pageSize, rangeError]);
 
   const filtered = !!(userId || action || table || from || to);
-  const lastPage = data ? Math.max(1, Math.ceil(data.total / data.page_size)) : 1;
 
   return (
-    <div className="space-y-4">
+    <div ref={topRef} className="scroll-mt-6 space-y-4">
       <p className="text-sm text-slate-600">
         Every time a student or visit record is viewed, added, changed or deleted, and every change to a user account.
       </p>
@@ -141,7 +168,7 @@ export function ActivityLogPage() {
           <p className="py-12 text-center text-sm text-slate-500">{filtered ? "No activity matches these filters." : "No activity yet."}</p>
         )}
         {data && data.items.length > 0 && (
-          <table className="w-full text-left text-sm">
+          <table className={`w-full text-left text-sm transition-opacity ${loading ? "opacity-50" : ""}`} aria-busy={loading}>
             <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold tracking-wide text-slate-500 uppercase">
               <tr>
                 <th scope="col" className="px-4 py-3">When</th>
@@ -175,21 +202,16 @@ export function ActivityLogPage() {
             </tbody>
           </table>
         )}
-        {data && data.total > data.page_size && (
-          <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
-            <p>{data.total} entries</p>
-            <div className="flex items-center gap-1">
-              <button type="button" className={buttonClass("ghost", "sm")} disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)} aria-label="Previous page">
-                <ChevronLeft className="size-4" aria-hidden />
-              </button>
-              <span className="px-2 tabular-nums">
-                Page {page} of {lastPage}
-              </span>
-              <button type="button" className={buttonClass("ghost", "sm")} disabled={page >= lastPage || loading} onClick={() => setPage((p) => p + 1)} aria-label="Next page">
-                <ChevronRight className="size-4" aria-hidden />
-              </button>
-            </div>
-          </div>
+        {data && data.total > 0 && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={data.total}
+            onPage={goToPage}
+            onPageSize={changePageSize}
+            pageSizes={PAGE_SIZES}
+            busy={loading}
+          />
         )}
       </div>
     </div>
