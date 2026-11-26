@@ -228,8 +228,23 @@ pub struct Cursors {
     pub deleted: Option<String>,
 }
 
+/// An active account of the school, for offline login (Argon2 hash, never a password).
+#[derive(Debug, Clone, Deserialize)]
+pub struct SyncAccount {
+    pub id: Uuid,
+    pub full_name: String,
+    pub username: String,
+    pub role: String,
+    pub password_hash: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct SyncPage {
+    /// Missing from servers older than the account sync.
+    #[serde(default)]
+    pub school: Option<crate::api::SchoolInfo>,
+    #[serde(default)]
+    pub accounts: Option<Vec<SyncAccount>>,
     pub sections: Vec<MSection>,
     pub medicines: Vec<MMedicine>,
     pub staff: Vec<MStaff>,

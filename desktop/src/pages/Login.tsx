@@ -8,6 +8,10 @@ import { ClinicScene } from "../components/ClinicScene";
 
 /** How many times to ping the server before giving up (each try waits up to 20 s). */
 const MAX_CONNECT_TRIES = 4;
+/** While offline, check quietly this often whether the connection is back. */
+const OFFLINE_RECHECK_MS = 10_000;
+/** A quick check never shows "Connecting…"; only one that takes longer than this. */
+const SHOW_CHECKING_AFTER_MS = 1500;
 
 type Conn = { state: "checking"; attempt: number } | { state: "online" } | { state: "offline"; message: string };
 
@@ -32,6 +36,7 @@ export function LoginPage() {
   const passId = useId();
 
   // Wake the server (Render's free tier sleeps) before letting staff sign in.
+  // No internet at all shows "offline" straight away: nothing to wait for.
   const connect = useCallback(async () => {
     for (let attempt = 1; attempt <= MAX_CONNECT_TRIES; attempt++) {
       setConn({ state: "checking", attempt });
@@ -41,7 +46,7 @@ export function LoginPage() {
         return;
       } catch (e) {
         const err = asCmdError(e);
-        if (err.kind !== "network" || attempt === MAX_CONNECT_TRIES) {
+        if (err.kind !== "network" || err.code === "offline" || attempt === MAX_CONNECT_TRIES) {
           setConn({ state: "offline", message: err.message });
           return;
         }
@@ -49,6 +54,18 @@ export function LoginPage() {
       }
     }
   }, []);
+
+  // Offline: keep checking in the background and clear the notice once the internet is back.
+  useEffect(() => {
+    if (conn.state !== "offline") return;
+    const id = window.setInterval(() => {
+      api.checkServer().then(
+        () => setConn({ state: "online" }),
+        () => {},
+      );
+    }, OFFLINE_RECHECK_MS);
+    return () => window.clearInterval(id);
+  }, [conn.state]);
 
   useEffect(() => {
     api.appConfig().then((c) => {
@@ -366,8 +383,17 @@ function SchoolCodeForm({
 }
 
 function ConnectionStatus({ conn, onRetry }: { conn: Conn; onRetry: () => void }) {
+  const [slow, setSlow] = useState(false);
+  const checking = conn.state === "checking";
+  useEffect(() => {
+    if (!checking) return setSlow(false);
+    const id = window.setTimeout(() => setSlow(true), SHOW_CHECKING_AFTER_MS);
+    return () => window.clearTimeout(id);
+  }, [checking]);
+
   if (conn.state === "online") return null;
   if (conn.state === "checking") {
+    if (!slow && conn.attempt === 1) return null;
     return (
       <Notice tone="info" icon={<Loader2 className="size-4 animate-spin" />}>
         Connecting to server…
@@ -379,8 +405,8 @@ function ConnectionStatus({ conn, onRetry }: { conn: Conn; onRetry: () => void }
     <Notice tone="warn" icon={<WifiOff className="size-4" />}>
       <span className="block">{conn.message}</span>
       <span className="mt-1 block text-xs">
-        You can still log in if your account was used on this PC while online and you didn't log out. New visits will be saved on this
-        PC and upload later.
+        You can still log in with your school account if this PC has been online before. Changes are saved on this PC and upload
+        when the internet is back.
       </span>
       <button
         type="button"

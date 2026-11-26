@@ -137,6 +137,8 @@ impl Api {
             .map_err(|_| CmdError::new("config", "Server URL is not valid."))
     }
 
+    /// `code: "offline"` = no connection at all (the server's name didn't resolve or
+    /// nothing answered), so there's no point waiting; otherwise the server may be waking up.
     pub async fn health(&self) -> Result<(), CmdError> {
         let res = self
             .http
@@ -144,7 +146,7 @@ impl Api {
             .timeout(Duration::from_secs(20))
             .send()
             .await
-            .map_err(|_| CmdError::network())?;
+            .map_err(|e| if e.is_connect() { offline() } else { CmdError::network() })?;
         if res.status().is_success() {
             Ok(())
         } else {
@@ -261,6 +263,10 @@ pub fn safe_api_path(path: &str) -> Result<&str, CmdError> {
         return Err(CmdError::new("invalid", "Invalid request path."));
     }
     Ok(p)
+}
+
+fn offline() -> CmdError {
+    CmdError { code: Some("offline".into()), ..CmdError::new("network", "You're offline. Check the internet connection.") }
 }
 
 fn bad_response() -> CmdError {

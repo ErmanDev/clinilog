@@ -248,7 +248,7 @@ async fn verify_password(password: String, hash: String) -> bool {
 }
 
 /// Logs in with the server; if it can't be reached, falls back to an offline login
-/// for an account that logged in on this PC before and hasn't logged out.
+/// for any active account of the school, once this PC has synced while online.
 #[tauri::command]
 async fn login(app: tauri::AppHandle, state: State<'_, AppState>, username: String, password: String) -> Result<SessionInfo, CmdError> {
     let api = state.api()?;
@@ -316,7 +316,7 @@ async fn offline_login(
     let Some(creds) = creds.filter(|c| c.school.id == school_id) else {
         return Err(CmdError::new(
             "network",
-            "Can't reach the Clinilog server. Offline login only works for an account that has logged in on this PC while online and hasn't logged out since.",
+            "You're offline, and this account isn't saved on this PC yet. Log in once while online (any account of your school) so the accounts are downloaded.",
         ));
     };
     if !verify_password(password.clone(), creds.password_hash.clone()).await {
@@ -346,13 +346,13 @@ async fn offline_login(
     Ok(info)
 }
 
-/// Ends the session and clears the offline copy. Unsent changes stay (encrypted)
-/// and upload the next time their author logs in online.
+/// Ends the session. The offline copy and the saved accounts stay (encrypted), so
+/// the PC can still be used offline; unsent changes upload when their author is next online.
 #[tauri::command]
 fn logout(state: State<'_, AppState>) {
     state.clear_session();
     if let Some(c) = state.cache.as_ref() {
-        let _ = c.clear_on_logout();
+        c.forget_in_memory();
     }
 }
 

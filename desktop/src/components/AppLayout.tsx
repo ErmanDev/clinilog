@@ -121,10 +121,6 @@ export function AppLayout() {
             {waiting} change{waiting === 1 ? " hasn't" : "s haven't"} been uploaded yet. {waiting === 1 ? "It stays" : "They stay"} saved
             (encrypted) on this PC and upload the next time you log in here while online.
           </p>
-          <p>
-            Logging out clears the school's records saved on this PC for offline use, so your next login needs the internet (and
-            downloads them again).
-          </p>
         </ConfirmDialog>
       </div>
     </div>

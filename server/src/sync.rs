@@ -2,8 +2,13 @@
 //!
 //! Students, visits and deletions come in pages ordered by (time, id). The app
 //! keeps the position of the last row it got for each kind (a cursor) and asks
-//! only for what changed after it. Sections, medicines and staff names are small
-//! and come in full every time.
+//! only for what changed after it. Sections, medicines, staff names and accounts
+//! are small and come in full every time.
+//!
+//! `accounts` lets every active account of the school log in on a PC that is
+//! offline, even one it never used before. It holds each account's Argon2 hash
+//! (never a password), which the app keeps encrypted. The superadmin isn't a
+//! school account, so it is never included.
 //!
 //! Cursors are `<rfc3339 time>|<uuid>`. A row's time is set when its transaction
 //! starts, so a slow transaction can commit a row "behind" a cursor; the app
@@ -79,6 +84,22 @@ pub struct Staff {
     pub full_name: String,
 }
 
+/// An active account of the school, for offline login.
+#[derive(Serialize, sqlx::FromRow)]
+pub struct SyncAccount {
+    pub id: Uuid,
+    pub full_name: String,
+    pub username: String,
+    pub role: String,
+    pub password_hash: String,
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct SyncSchool {
+    pub id: Uuid,
+    pub name: String,
+}
+
 #[derive(Serialize, sqlx::FromRow)]
 pub struct SyncStudent {
     pub id: Uuid,
@@ -129,6 +150,8 @@ pub struct Cursors {
 
 #[derive(Serialize)]
 pub struct SyncResponse {
+    pub school: SyncSchool,
+    pub accounts: Vec<SyncAccount>,
     pub sections: Vec<SyncSection>,
     pub medicines: Vec<SyncMedicine>,
     pub staff: Vec<Staff>,
@@ -153,6 +176,18 @@ pub async fn changes(State(state): State<AppState>, user: AuthUser, Query(q): Qu
     let mut tx = state.db.begin().await?;
     sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY").execute(&mut *tx).await?;
 
+    let school_row: SyncSchool = sqlx::query_as("SELECT id, name FROM schools WHERE id = $1")
+        .bind(school)
+        .fetch_one(&mut *tx)
+        .await?;
+    let accounts: Vec<SyncAccount> = sqlx::query_as(
+        "SELECT id, full_name, username, role::text AS role, password_hash
+           FROM users
+          WHERE school_id = $1 AND is_active AND role::text IN ('admin', 'staff')",
+    )
+    .bind(school)
+    .fetch_all(&mut *tx)
+    .await?;
     let sections: Vec<SyncSection> =
         sqlx::query_as("SELECT id, grade_level, section_name FROM sections WHERE school_id = $1")
             .bind(school)
@@ -222,7 +257,7 @@ pub async fn changes(State(state): State<AppState>, user: AuthUser, Query(q): Qu
         visits: visits.last().map(|v| Cursor::format(v.updated_at, v.id)).or(q.visits),
         deleted: deleted.last().map(|d| Cursor::format(d.deleted_at, d.record_id)).or(q.deleted),
     };
-    Ok(Json(SyncResponse { sections, medicines, staff, students, visits, deleted, next, more }))
+    Ok(Json(SyncResponse { school: school_row, accounts, sections, medicines, staff, students, visits, deleted, next, more }))
 }
 
 #[cfg(test)]

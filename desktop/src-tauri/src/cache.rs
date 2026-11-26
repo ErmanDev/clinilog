@@ -3,14 +3,16 @@
 //!
 //! - `m_sections`, `m_students`, `m_medicines`, `m_visits`, `m_staff`: the school's
 //!   clinic records as the server last sent them (the *base*, see `mirror.rs`)
-//! - `credentials`: a password check value per user, for offline login
+//! - `credentials`: a password check value per account, for offline login. Every
+//!   active account of the school comes down with each sync (the server's Argon2
+//!   hash), so anyone can log in offline on a PC that has been online once.
 //! - `outbox`: changes made on this PC that haven't reached the server yet
 //! - `views`: student and visit records opened offline, for the server's audit trail
 //! - `responses`: the last copy of pages that need the server (user accounts,
 //!   activity log, subscription), per user, shown read-only while offline
 //!
-//! Logging out clears the records, logins and saved pages. Unsent changes and views
-//! stay; they upload the next time their author logs in online.
+//! Logging out keeps all of this, so the PC can still be used offline afterwards.
+//! Connecting the PC to another school clears it.
 
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -36,7 +38,8 @@ const MAX_RESPONSES: i64 = 300;
 pub struct Credentials {
     pub user: UserInfo,
     pub school: SchoolInfo,
-    /// Argon2id hash of the password, made on this PC at the last online login.
+    /// Argon2id hash of the password: from the server's account list, or made on
+    /// this PC at an online login.
     pub password_hash: String,
     pub saved_at: DateTime<Utc>,
 }
@@ -328,9 +331,32 @@ impl Cache {
             inner.base = Some(Mirror::default());
         }
         let next = page.next.clone();
+        let accounts = match (page.school.clone(), page.accounts.clone()) {
+            (Some(school), Some(list)) => Some((school, list)),
+            _ => None,
+        };
         let changes = page.changes(self.base_mut(&mut inner)?);
         let tx = inner.conn.transaction().map_err(db_err)?;
         self.persist(&tx, &changes)?;
+        if let Some((school, list)) = accounts {
+            // The full list: an account missing from it was disabled or deleted.
+            tx.execute("DELETE FROM credentials", []).map_err(db_err)?;
+            for a in list {
+                let key = a.username.to_lowercase();
+                let creds = Credentials {
+                    user: UserInfo { id: a.id, full_name: a.full_name, username: a.username, role: a.role },
+                    school: school.clone(),
+                    password_hash: a.password_hash,
+                    saved_at: Utc::now(),
+                };
+                tx.execute(
+                    "INSERT INTO credentials (username, payload) VALUES (?1, ?2)
+                     ON CONFLICT(username) DO UPDATE SET payload = excluded.payload",
+                    params![key, self.seal(&format!("credentials:{key}"), &creds)],
+                )
+                .map_err(db_err)?;
+            }
+        }
         Self::meta_set_in(&tx, "sync_cursors", &serde_json::to_string(&next).expect("serializable"))?;
         Self::meta_set_in(&tx, "synced_at", &Utc::now().to_rfc3339())?;
         tx.commit().map_err(db_err)?;
@@ -596,8 +622,8 @@ impl Cache {
 
     // ---------- clearing ----------
 
-    /// Drops records, logins and saved pages. `school_changed` also drops views
-    /// logged for the old school, which can no longer be uploaded.
+    /// Drops records, logins and saved pages (when the PC changes school). `school_changed`
+    /// also drops views logged for the old school, which can no longer be uploaded.
     fn clear_reference_data(&self, school_changed: bool) -> R<()> {
         let mut inner = self.inner.lock().unwrap();
         inner
@@ -618,11 +644,11 @@ impl Cache {
         Ok(())
     }
 
-    /// On logout: drop the offline copy, saved logins and saved pages. Unsent changes stay.
-    pub fn clear_on_logout(&self) -> R<()> {
-        self.clear_reference_data(false)?;
-        let _ = self.inner.lock().unwrap().conn.execute_batch("VACUUM;");
-        Ok(())
+    /// Drops the decrypted copy held in memory (on logout). The file keeps everything.
+    pub fn forget_in_memory(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.base = None;
+        inner.view = None;
     }
 }
 
@@ -785,7 +811,7 @@ mod tests {
     }
 
     #[test]
-    fn logout_clears_everything_but_unsent_changes_and_views() {
+    fn logout_keeps_the_offline_copy_and_logins() {
         let c = Cache::in_memory([4; 32]);
         let (school, user) = (Uuid::new_v4(), Uuid::new_v4());
         c.ensure_school(school).unwrap();
@@ -794,15 +820,34 @@ mod tests {
         c.save_credentials("Nurse_Joy", &creds()).unwrap();
         assert!(c.credentials("NURSE_JOY").unwrap().is_some(), "usernames are case-insensitive");
         c.save_response(user, "users", &serde_json::json!([])).unwrap();
-        c.log_view(school, user, &ViewEntry { table_name: "students".into(), record_id: Uuid::new_v4(), viewed_at: Utc::now() }).unwrap();
-        c.outbox_add(school, user, Uuid::new_v4(), &new_visit_op(Uuid::new_v4())).unwrap();
-        c.clear_on_logout().unwrap();
-        assert!(c.view().unwrap().students.is_empty());
-        assert!(c.credentials("nurse_joy").unwrap().is_none());
-        assert!(c.synced_at().unwrap().is_none() && c.cursors().unwrap().is_none());
-        assert!(c.response(user, "users").unwrap().is_none());
-        assert_eq!(c.outbox(school).unwrap().len(), 1, "unsent changes survive logout");
-        assert_eq!(c.views(school, user, 10).unwrap().len(), 1, "so do views for the audit trail");
+        c.forget_in_memory();
+        assert_eq!(c.view().unwrap().students.len(), 1);
+        assert!(c.credentials("nurse_joy").unwrap().is_some());
+        assert!(c.synced_at().unwrap().is_some() && c.cursors().unwrap().is_some());
+        assert!(c.response(user, "users").unwrap().is_some());
+    }
+
+    #[test]
+    fn synced_accounts_replace_the_saved_logins() {
+        let c = Cache::in_memory([7; 32]);
+        c.save_credentials("old_nurse", &creds()).unwrap();
+        let school = Uuid::new_v4();
+        let mut p = page(vec![], vec![]);
+        p.school = Some(SchoolInfo { id: school, name: "Valenzuela NHS".into() });
+        p.accounts = Some(vec![crate::mirror::SyncAccount {
+            id: Uuid::new_v4(),
+            full_name: "Clinic Admin".into(),
+            username: "Admin".into(),
+            role: "admin".into(),
+            password_hash: "$argon2id$v=19$server".into(),
+        }]);
+        c.apply_sync_page(p, true, c.sync_start().unwrap().1).unwrap();
+        let admin = c.credentials("admin").unwrap().expect("account from the server");
+        assert_eq!((admin.user.role.as_str(), admin.school.id, admin.password_hash.as_str()), ("admin", school, "$argon2id$v=19$server"));
+        assert!(c.credentials("old_nurse").unwrap().is_none(), "not on the server's list any more");
+        // A server without account sync leaves the saved logins alone.
+        c.apply_sync_page(page(vec![], vec![]), false, c.sync_start().unwrap().1).unwrap();
+        assert!(c.credentials("admin").unwrap().is_some());
     }
 
     #[test]
@@ -818,10 +863,11 @@ mod tests {
     }
 
     #[test]
-    fn a_download_running_during_logout_cant_refill_the_copy() {
+    fn a_download_running_during_a_school_change_cant_refill_the_copy() {
         let c = Cache::in_memory([6; 32]);
+        c.ensure_school(Uuid::new_v4()).unwrap();
         let (_, epoch) = c.sync_start().unwrap();
-        c.clear_on_logout().unwrap();
+        c.ensure_school(Uuid::new_v4()).unwrap();
         let sec = section();
         assert!(c.apply_sync_page(page(vec![sec.clone()], vec![student(sec.id)]), true, epoch).is_err());
         assert!(c.view().unwrap().students.is_empty());
