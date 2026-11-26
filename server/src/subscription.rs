@@ -172,7 +172,7 @@ pub async fn current(db: &PgPool, school_id: Uuid) -> AppResult<SubscriptionInfo
 pub async fn ensure_writable(db: &PgPool, school_id: Uuid) -> AppResult<SubscriptionInfo> {
     let info = current(db, school_id).await?;
     if info.read_only {
-        return Err(crate::error::AppError::Forbidden(
+        return Err(crate::error::AppError::ReadOnly(
             "Your school's subscription has expired. Records can be viewed but not changed until it is renewed."
                 .into(),
         ));

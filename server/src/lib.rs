@@ -13,6 +13,7 @@ pub mod seed;
 pub mod sections;
 pub mod students;
 pub mod subscription;
+pub mod sync;
 pub mod users;
 pub mod validate;
 pub mod visits;

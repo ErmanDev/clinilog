@@ -2,7 +2,7 @@ import { Loader2, Plus, Stethoscope } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { buttonClass, ErrorNotice } from "../components/form";
-import { PendingVisits } from "../components/PendingVisits";
+import { PendingChanges } from "../components/PendingChanges";
 import { Card } from "../components/ui";
 import { asCmdError, visitsApi, type Dashboard } from "../lib/api";
 import { formatDate, planLabel } from "../lib/format";
@@ -49,7 +49,7 @@ export function DashboardPage() {
         )}
       </div>
 
-      <PendingVisits />
+      <PendingChanges />
       {error && <ErrorNotice>{error}</ErrorNotice>}
 
       <div className="grid gap-4 md:grid-cols-3">

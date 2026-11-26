@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use crate::{
     activity,
     auth::{self, require_admin, require_auth, require_superadmin},
-    medicines, payments, reports, schools, sections, students, subscription, users, visits, AppState,
+    medicines, payments, reports, schools, sections, students, subscription, sync, users, visits, AppState,
 };
 
 /// Route groups:
@@ -60,6 +60,9 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/dashboard", get(visits::dashboard))
         .route("/reports/basic", get(reports::basic))
         .route("/reports/detailed", get(reports::detailed))
+        // Offline copy for the desktop app, and record views made while offline.
+        .route("/sync", get(sync::changes))
+        .route("/activity/views", post(activity::record_offline_views))
         .merge(admin)
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
 

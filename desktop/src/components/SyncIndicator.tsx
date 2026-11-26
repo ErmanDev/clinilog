@@ -1,12 +1,16 @@
 import { CloudOff, KeyRound, Loader2, RefreshCw, Wifi } from "lucide-react";
+import { formatDateTime } from "../lib/format";
+import { isOffline } from "../lib/api";
 import { useSync } from "../lib/sync";
 
-/** Sidebar card: online/offline, visits waiting to upload, and "Sync now". */
+const changes = (n: number) => `${n} change${n === 1 ? "" : "s"}`;
+
+/** Sidebar card: online/offline, changes waiting to upload, and "Sync now". */
 export function SyncIndicator() {
   const { status, syncing, syncNow } = useSync();
   if (!status) return null;
   const waiting = status.pending + status.failed;
-  const online = status.online && !status.session_offline;
+  const online = !isOffline(status);
 
   return (
     <div className="mx-3 mb-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs" role="status" aria-live="polite">
@@ -20,19 +24,22 @@ export function SyncIndicator() {
           onClick={() => void syncNow()}
           disabled={syncing}
           className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium text-teal-800 hover:bg-teal-50 disabled:text-slate-400"
-          title="Check the connection and upload now"
+          title="Check the connection, upload changes and download the latest records"
         >
           {syncing ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <RefreshCw className="size-3" aria-hidden />}
           Sync now
         </button>
       </div>
       <p className="mt-1 text-slate-600">
-        {waiting === 0 ? "All visits uploaded." : `${waiting} visit${waiting === 1 ? "" : "s"} waiting to upload`}
+        {waiting === 0 ? "All changes uploaded." : `${changes(waiting)} waiting to upload`}
         {status.failed > 0 && <span className="font-medium text-red-700"> · {status.failed} need attention</span>}
       </p>
       {status.others_waiting > 0 && (
-        <p className="mt-0.5 text-slate-500">
-          +{status.others_waiting} from other staff (they upload when that person logs in)
+        <p className="mt-0.5 text-slate-500">+{changes(status.others_waiting)} from other staff (they upload when that person logs in)</p>
+      )}
+      {status.synced_at && (
+        <p className="mt-0.5 text-slate-500" title="When the records saved on this PC were last updated from the server">
+          Records updated {formatDateTime(status.synced_at)}
         </p>
       )}
       {status.auth_required && (
@@ -49,21 +56,29 @@ export function OfflineBanner() {
   const { status } = useSync();
   if (!status) return null;
   if (status.cache_error) {
-    return <Banner tone="danger">{status.cache_error} Visits can't be saved while offline on this PC.</Banner>;
+    return <Banner tone="danger">{status.cache_error} The app can't work offline on this PC.</Banner>;
   }
   if (status.auth_required) {
     return (
       <Banner tone="warn">
-        Your password or account changed since you logged in, so visits can't be uploaded. Log out and log in again — visits saved on
+        Your password or account changed since you logged in, so changes can't be uploaded. Log out and log in again — changes saved on
         this PC are kept.
       </Banner>
     );
   }
-  if (!status.online || status.session_offline) {
+  if (isOffline(status)) {
+    if (!status.synced_at) {
+      return (
+        <Banner tone="warn">
+          You're offline, and this PC hasn't downloaded the school's records yet, so most pages need the connection. They download
+          automatically once the internet is back.
+        </Banner>
+      );
+    }
     return (
       <Banner tone="warn">
-        You're offline. New clinic visits are saved on this PC and upload automatically when the connection is back. Other pages need
-        the server.
+        You're offline. You can keep working with the records saved on this PC (updated {formatDateTime(status.synced_at)}). Changes are
+        saved here and upload automatically when the connection is back. User accounts and payments need the internet.
       </Banner>
     );
   }

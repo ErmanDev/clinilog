@@ -155,6 +155,67 @@ impl Action {
     }
 }
 
+/// Most views one upload can carry.
+const MAX_OFFLINE_VIEWS: usize = 500;
+/// Oldest offline view accepted (same window as visits recorded offline).
+const MAX_VIEW_AGE_DAYS: i64 = 30;
+
+#[derive(Deserialize)]
+pub struct OfflineView {
+    /// Made on the PC, so a retried upload doesn't log the same view twice.
+    pub id: Uuid,
+    /// `students` or `clinic_visits`.
+    pub table_name: String,
+    pub record_id: Uuid,
+    pub viewed_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct OfflineViews {
+    pub views: Vec<OfflineView>,
+}
+
+/// `POST /activity/views` — student and visit records the user opened while the
+/// desktop app was offline, so the audit trail stays complete. Logged under the
+/// signed-in user at the time they were viewed; future times are clamped to now and
+/// views older than 30 days are skipped.
+pub async fn record_offline_views(
+    State(state): State<AppState>,
+    user: AuthUser,
+    axum::Json(input): axum::Json<OfflineViews>,
+) -> AppResult<axum::http::StatusCode> {
+    if input.views.len() > MAX_OFFLINE_VIEWS {
+        return Err(AppError::BadRequest(format!("Send at most {MAX_OFFLINE_VIEWS} views at a time.")));
+    }
+    let now = Utc::now();
+    let oldest = now - chrono::Duration::days(MAX_VIEW_AGE_DAYS);
+    let mut tx = state.db.begin().await?;
+    for v in &input.views {
+        if !matches!(v.table_name.as_str(), "students" | "clinic_visits") {
+            return Err(AppError::BadRequest("Unknown record type.".into()));
+        }
+        let at = v.viewed_at.min(now);
+        if at < oldest {
+            continue;
+        }
+        sqlx::query(
+            "INSERT INTO activity_log (id, school_id, user_id, action, table_name, record_id, created_at)
+             VALUES ($1, $2, $3, 'view', $4, $5, $6)
+             ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(v.id)
+        .bind(user.school_id)
+        .bind(user.id)
+        .bind(&v.table_name)
+        .bind(v.record_id)
+        .bind(at)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
 /// Writes one log row. Pass the same transaction as the change so both commit together.
 pub async fn log(conn: &mut PgConnection, user: &AuthUser, action: Action, table: &str, record_id: Uuid) -> AppResult<()> {
     sqlx::query(

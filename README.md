@@ -43,7 +43,7 @@ When the server starts, it applies any pending migrations by itself. You don't n
 | GET | `/auth/me` | signed in | The current user and school |
 | GET | `/subscription` | signed in | Plan, expiry, read-only flag, limits and Premium features |
 | GET | `/sections` | signed in | Sections, with student counts |
-| POST, PUT, DELETE | `/sections`, `/sections/{id}` | admin | Add, rename or delete a section (only if it has no students) |
+| POST, PUT, DELETE | `/sections`, `/sections/{id}` | admin | Add, rename or delete a section (only if it has no students). Optional client `id` on add makes retries safe |
 | GET | `/students?q=&section_id=&grade_level=&page=&page_size=` | signed in | Search by name or LRN prefix, filter by section, paged. `grade_level` needs Premium |
 | POST | `/students` | signed in | Add a student. Optional client `id` makes retries safe |
 | GET | `/students/lrn-check?lrn=&exclude=` | signed in | Whether an LRN is free in the school, or who has it. `exclude` is the student being edited |
@@ -51,7 +51,7 @@ When the server starts, it applies any pending migrations by itself. You don't n
 | PUT | `/students/{id}` | signed in | Edit a student |
 | DELETE | `/students/{id}` | admin | Delete a student who has no visits |
 | GET | `/medicines` | signed in | Medicine list, with how many visits used each one |
-| POST, PUT, DELETE | `/medicines`, `/medicines/{id}` | admin | Add, edit or delete a medicine (only if no visit used it) |
+| POST, PUT, DELETE | `/medicines`, `/medicines/{id}` | admin | Add, edit or delete a medicine (only if no visit used it). Optional client `id` on add makes retries safe |
 | GET | `/visits?…` | signed in | Visits, newest first. All plans: `date` (one Philippine day), `student_id`, `q` (student name or LRN), `section_id`. Premium only: `grade_level`, `date_from`, `date_to`, `complaint` |
 | POST | `/visits` | signed in | Record a visit. The server sets the time and attending staff. Optional client `id` makes retries safe |
 | GET | `/visits/{id}` | signed in | One visit. Logged as a view |
@@ -60,6 +60,8 @@ When the server starts, it applies any pending migrations by itself. You don't n
 | GET | `/dashboard` | signed in | Today's visit count and the 10 most recent visits |
 | GET | `/reports/basic?year=&month=` | signed in | Visits and students seen, visits per month for the year, most common complaints |
 | GET | `/reports/detailed?year=&month=` | signed in, Premium | Visits by grade and section, medicine usage, frequent visitors |
+| GET | `/sync?students=&visits=&deleted=&limit=` | signed in | The school's records for the desktop app's offline copy: students, visits and deletions changed after each cursor (paged), plus all sections, medicines and staff names |
+| POST | `/activity/views` | signed in | Student and visit records opened while the app was offline, logged at the time they were viewed. Each has a client `id`, so retries don't log twice |
 
 LRN rules:
 - An LRN is exactly 12 ASCII digits after trimming spaces at the ends. Leading zeros are kept.
@@ -206,14 +208,19 @@ The window opens fullscreen with no Windows titlebar. Clinilog's own Minimize an
 
 ### Offline mode
 
-- **Saving visits.** New visits are saved on the PC first, then uploaded. If the server can't be reached, they wait in an outbox and upload automatically. A background check runs every 30 seconds, and there is also a **Sync now** button. Each visit has an ID made on the PC, so a retried upload never creates a duplicate. Uploads keep the time the visit was recorded.
-- **What's cached.** Only what's needed to record visits offline:
-  - the student list and the medicine list, refreshed every 15 minutes;
-  - a password check value for offline login (an Argon2 hash, never the password).
+The app keeps working without the internet. When the connection is back, it uploads what was done offline and downloads what changed, by itself.
+
+- **What works offline.** Dashboard, students (search, view, add, edit, delete), visits (search, view, record, edit, delete), the Search page, basic and detailed reports (including Print and Save as PDF), and sections and medicines in Settings. Pages are answered from the records saved on the PC, with the same checks, messages and permission rules as the server (`desktop/src-tauri/src/local.rs`). User accounts, the activity log and the subscription page show the last copy seen on this PC, and changing them needs the internet.
+- **The offline copy.** After an online login, the app downloads the school's sections, students, visits, medicines and staff names (`GET /sync`), then only what changed, every 30 seconds. Deleted records are removed too. The sidebar shows when the records were last updated.
+- **Saving changes.** Online, changes go straight to the server. If the server can't be reached, the change is checked on the PC, saved in an encrypted outbox, and shown right away. Changes upload in the order they were made, one person at a time. A background check runs every 30 seconds (every 10 seconds while offline), and there is also a **Sync now** button. New records get an ID made on the PC, so a retried upload never creates a duplicate. Visits keep the time they were recorded.
+- **Two PCs changing the same record.** The upload that reaches the server last wins. Things the server checks again on upload, such as an LRN another PC took meanwhile, are refused and shown under "Waiting to upload".
+- **Changes the server refuses.** For example, the student was deleted, or the LRN is now taken. These show under "Waiting to upload" with the reason, and a **Try again** or **Discard** button. For a student, **Try again** also means "save anyway" after a same-name-and-birthdate warning.
+- **Audit trail.** Students and visits opened offline are logged and uploaded with the time they were viewed (`POST /activity/views`).
+- **What's stored.** The school's records above, saved copies of the server-only pages (per user, so a staff account never sees an admin's), records opened offline, unsent changes, and a password check value for offline login (an Argon2 hash, never the password).
 - **Encryption.** The cache is a local SQLite file at `%APPDATA%\com.clinilog.desktop\offline-cache.sqlite3`. Every row is encrypted with AES-256-GCM and tied to its table and row. The 256-bit key is protected by Windows DPAPI, so a copied file can't be read on another PC or Windows account. This was chosen instead of SQLCipher, which would need Strawberry Perl on every build machine.
-- **Offline login.** Works for an account that logged in on this PC while online and hasn't logged out since. 5 wrong passwords lock it for 5 minutes. When the connection returns, the app logs back in by itself. If the password was changed or the account disabled in the meantime, it asks the person to log in again, and their waiting visits are kept.
-- **Logout.** Clears the cached lists and saved logins. Visits that haven't uploaded are kept, encrypted, and upload the next time the person who recorded them logs in online. They stay with that person so they're credited correctly.
-- **Visits the server refuses.** For example, the student was deleted. These show under "Waiting to upload" with the reason, and a **Try again** or **Discard** button.
+- **Offline login.** Works for an account that logged in on this PC while online and hasn't logged out since. 5 wrong passwords lock it for 5 minutes. When the connection returns, the app logs back in by itself. If the password was changed or the account disabled in the meantime, it asks the person to log in again, and their waiting changes are kept.
+- **Plan.** Offline, the last known plan applies for 7 days. After that, records are view-only until the app reconnects. If the subscription expires before offline changes upload, they wait and upload once it's renewed.
+- **Logout.** Clears the offline copy, saved pages and saved logins. Changes that haven't uploaded are kept, encrypted, and upload the next time the person who made them logs in online. They stay with that person so they're credited correctly.
 
 ### Building the installer
 

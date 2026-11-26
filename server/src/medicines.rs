@@ -28,6 +28,9 @@ pub struct Medicine {
 
 #[derive(Deserialize)]
 pub struct MedicineInput {
+    /// Optional client-generated id; makes create safe to retry (offline changes).
+    #[serde(default)]
+    pub id: Option<Uuid>,
     #[serde(default)]
     pub name: String,
     #[serde(default)]
@@ -103,8 +106,20 @@ pub async fn create(
     Json(input): Json<MedicineInput>,
 ) -> AppResult<(StatusCode, Json<Medicine>)> {
     ensure_writable(&state.db, user.school_id).await?;
+    if let Some(id) = input.id {
+        let owner: Option<Uuid> = sqlx::query_scalar("SELECT school_id FROM medicines WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?;
+        match owner {
+            Some(s) if s == user.school_id => return Ok((StatusCode::OK, Json(fetch(&state, user.school_id, id).await?))),
+            Some(_) => return Err(AppError::BadRequest("Invalid medicine id.".into())),
+            None => {}
+        }
+    }
     let (name, unit) = validate(&state, user.school_id, None, &input).await?;
-    let id: Uuid = sqlx::query_scalar("INSERT INTO medicines (school_id, name, unit) VALUES ($1, $2, $3) RETURNING id")
+    let id: Uuid = sqlx::query_scalar("INSERT INTO medicines (id, school_id, name, unit) VALUES ($1, $2, $3, $4) RETURNING id")
+        .bind(input.id.unwrap_or_else(Uuid::new_v4))
         .bind(user.school_id)
         .bind(&name)
         .bind(&unit)

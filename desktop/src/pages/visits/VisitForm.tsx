@@ -7,7 +7,6 @@ import { Card } from "../../components/ui";
 import { asCmdError, medicinesApi, studentsApi, syncApi, visitsApi, type Medicine, type VisitInput } from "../../lib/api";
 import { formatDateTime, listName } from "../../lib/format";
 import { usePlan, useSession } from "../../lib/session";
-import { useSync } from "../../lib/sync";
 import { validateQuantity, validateText } from "../../lib/validation";
 
 interface Line {
@@ -26,9 +25,6 @@ export function VisitFormPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { session } = useSession();
-  // Read once when the form opens: offline → use the lists saved on this PC directly.
-  const { status: syncStatus } = useSync();
-  const [offlineNow] = useState(() => !!syncStatus && (!syncStatus.online || syncStatus.session_offline));
   const { readOnly } = usePlan();
 
   const [student, setStudent] = useState<PickedStudent | null>(null);
@@ -49,13 +45,10 @@ export function VisitFormPage() {
   const complaintId = useId();
   const treatmentId = useId();
 
+  // Offline, these come from the records saved on this PC (the app does this by itself).
   useEffect(() => {
-    (offlineNow ? Promise.reject({ kind: "network", message: "offline" }) : medicinesApi.list())
-      .catch(async (e) => {
-        // Offline: use the medicine list saved on this PC.
-        if (asCmdError(e).kind !== "network") throw e;
-        return (await syncApi.cachedMedicines()).map((m) => ({ ...m, visit_count: 0 }));
-      })
+    medicinesApi
+      .list()
       .then(setMedicines)
       .catch((e) => setFormError(`Couldn't load medicines: ${asCmdError(e).message}`));
   }, []);
@@ -71,14 +64,10 @@ export function VisitFormPage() {
   useEffect(() => {
     const sid = params.get("student");
     if (editing || !sid) return;
-    (offlineNow ? Promise.reject(new Error("offline")) : studentsApi.get(sid))
+    studentsApi
+      .get(sid)
       .then((s) => setStudent(toPicked(s)))
-      .catch(() =>
-        syncApi
-          .cachedStudent(sid)
-          .then((s) => s && setStudent(s))
-          .catch(() => {}),
-      );
+      .catch(() => {});
   }, [editing, params]);
 
   useEffect(() => {
@@ -135,13 +124,12 @@ export function VisitFormPage() {
         navigate(`/visits/${saved.id}`, { replace: true });
         return;
       }
-      // New visits are saved on this PC first, then uploaded (right away if online).
+      // Uploaded right away when online; otherwise saved on this PC and uploaded later.
       const r = await syncApi.recordVisit({
         student_id: student.id,
         complaint,
         treatment,
         medicines: medicineLines,
-        student_label: listName(student),
       });
       if (r.status === "synced") {
         navigate(`/visits/${r.visit_id}`, { replace: true });

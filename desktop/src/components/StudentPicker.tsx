@@ -1,6 +1,6 @@
 import { Loader2, Search, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { asCmdError, studentsApi, syncApi, type Student } from "../lib/api";
+import { asCmdError, isOffline, studentsApi, type Student } from "../lib/api";
 import { listName, sectionLabel } from "../lib/format";
 import { useSync } from "../lib/sync";
 import { inputClass } from "./form";
@@ -52,13 +52,12 @@ export function StudentPicker({
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [results, setResults] = useState<PickedStudent[]>([]);
-  const [fromCache, setFromCache] = useState(false);
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [active, setActive] = useState(0);
-  // Known to be offline: search the saved list straight away instead of waiting for a timeout.
+  // Offline, the search runs on the records saved on this PC (the app does this by itself).
   const { status } = useSync();
-  const offline = !!status && (!status.online || status.session_offline);
+  const fromCache = isOffline(status);
 
   useEffect(() => {
     const term = q.trim();
@@ -69,20 +68,11 @@ export function StudentPicker({
     let cancelled = false;
     setLoading(true);
     const t = window.setTimeout(() => {
-      const fromServer = offline
-        ? Promise.reject({ kind: "network", message: "offline" })
-        : studentsApi.list({ q: term, page_size: 8 }).then((p) => p.items.map(toPicked));
-      fromServer
-        .then((items) => ({ items, cached: false }))
-        .catch(async (e) => {
-          // Server unreachable: search the student list saved on this PC instead.
-          if (asCmdError(e).kind !== "network") throw e;
-          return { items: await syncApi.cachedStudents(term), cached: true };
-        })
-        .then(({ items, cached }) => {
+      studentsApi
+        .list({ q: term, page_size: 8 })
+        .then((p) => {
           if (cancelled) return;
-          setResults(items);
-          setFromCache(cached);
+          setResults(p.items.map(toPicked));
           setActive(0);
           setSearchError(null);
         })
@@ -93,7 +83,7 @@ export function StudentPicker({
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [q, offline]);
+  }, [q, fromCache]);
 
   function pick(s: PickedStudent) {
     onChange(s);
@@ -196,7 +186,7 @@ export function StudentPicker({
         >
           {searchError && <li className="px-3 py-2 text-sm text-red-700">{searchError}</li>}
           {fromCache && !searchError && (
-            <li className="border-b border-slate-100 px-3 py-1.5 text-xs text-slate-500">Offline — searching the list saved on this PC</li>
+            <li className="border-b border-slate-100 px-3 py-1.5 text-xs text-slate-500">Offline — searching the records saved on this PC</li>
           )}
           {!searchError && !loading && results.length === 0 && (
             <li className="px-3 py-2 text-sm text-slate-500">No students match “{q.trim()}”.</li>

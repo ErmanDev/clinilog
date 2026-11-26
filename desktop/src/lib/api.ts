@@ -503,38 +503,41 @@ export const activityApi = {
   }) => request<ActivityPage>("GET", `activity${qs(params)}`),
 };
 
-// ---------- Offline cache & sync (src-tauri/src/sync.rs) ----------
+// ---------- Working offline & sync (src-tauri/src/sync.rs) ----------
+//
+// Every request above goes through the desktop app, which answers from the records
+// saved on this PC when the server can't be reached, and queues changes to upload later.
 
 export interface SyncStatus {
   online: boolean;
+  /** Logged in without the server and not reconnected yet. */
   session_offline: boolean;
+  /** This user's changes waiting to upload / refused by the server. */
   pending: number;
   failed: number;
+  /** Changes saved on this PC by other users; they upload when that person logs in. */
   others_waiting: number;
-  lists_refreshed_at: string | null;
+  /** When the records saved on this PC were last updated from the server. */
+  synced_at: string | null;
   auth_required: boolean;
   cache_error: string | null;
 }
 
-export interface CachedStudent {
-  id: string;
-  lrn: string;
-  first_name: string;
-  middle_name: string | null;
-  last_name: string;
-  grade_level: number;
-  section_name: string;
-}
-
+/** A change saved on this PC that hasn't reached the server yet. */
 export interface OutboxEntry {
   id: string;
   mine: boolean;
   status: "pending" | "failed";
   attempts: number;
   last_error: string | null;
-  visited_at: string;
-  student_label: string;
-  complaint: string;
+  /** When the change was made. */
+  at: string;
+  /** e.g. "New visit", "Student record edited". */
+  action: string;
+  /** Usually the student, e.g. "Dela Cruz, Juan". */
+  label: string;
+  /** e.g. the complaint; may be empty. */
+  summary: string;
   recorded_by: string;
 }
 
@@ -543,21 +546,22 @@ export interface VisitDraft {
   complaint: string;
   treatment: string;
   medicines: { medicine_id: string; quantity: number }[];
-  student_label: string;
 }
 
 export const syncApi = {
   status: () => call<SyncStatus>("sync_status"),
   syncNow: () => call<SyncStatus>("sync_now"),
-  /** Saves on this PC first, then uploads if online. */
+  /** On the server if it can be reached, otherwise saved on this PC to upload later. */
   recordVisit: (draft: VisitDraft) => call<{ status: "synced" | "pending"; visit_id: string }>("record_visit", { draft }),
   outbox: () => call<OutboxEntry[]>("outbox_list"),
   retry: (id: string) => call<void>("outbox_retry", { id }),
   discard: (id: string) => call<void>("outbox_discard", { id }),
-  cachedStudents: (q: string) => call<CachedStudent[]>("cached_students", { q }),
-  cachedStudent: (id: string) => call<CachedStudent | null>("cached_student", { id }),
-  cachedMedicines: () => call<{ id: string; name: string; unit: string }[]>("cached_medicines"),
 };
+
+/** True while pages are answered from the records saved on this PC. */
+export function isOffline(status: SyncStatus | null): boolean {
+  return !!status && (!status.online || status.session_offline);
+}
 
 export const sectionsApi = {
   list: () => request<Section[]>("GET", "sections"),

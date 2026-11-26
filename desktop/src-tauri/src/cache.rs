@@ -1,43 +1,36 @@
 //! Offline cache (spec §8): a local SQLite file whose sensitive values are all
-//! encrypted (see `crypto.rs`). It holds only what's needed to log visits offline:
+//! encrypted (see `crypto.rs`). It holds:
 //!
-//! - `students`, `medicines`: lists for picking on the visit form
+//! - `m_sections`, `m_students`, `m_medicines`, `m_visits`, `m_staff`: the school's
+//!   clinic records as the server last sent them (the *base*, see `mirror.rs`)
 //! - `credentials`: a password check value per user, for offline login
-//! - `outbox`: visits saved on this PC that haven't reached the server yet
+//! - `outbox`: changes made on this PC that haven't reached the server yet
+//! - `views`: student and visit records opened offline, for the server's audit trail
+//! - `responses`: the last copy of pages that need the server (user accounts,
+//!   activity log, subscription), per user, shown read-only while offline
 //!
-//! Logging out clears everything except the outbox (unsent visits are never
-//! thrown away; they upload the next time their author logs in online).
+//! Logging out clears the records, logins and saved pages. Unsent changes and views
+//! stay; they upload the next time their author logs in online.
 
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::{path::Path, sync::Mutex};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 use uuid::Uuid;
 
 use crate::{
     api::{SchoolInfo, UserInfo},
     crypto::{self, Cipher},
+    local,
+    mirror::{Change, Cursors, Mirror, SyncPage, Table},
 };
 
 const DB_FILE: &str = "offline-cache.sqlite3";
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct CachedStudent {
-    pub id: Uuid,
-    pub lrn: String,
-    pub first_name: String,
-    pub middle_name: Option<String>,
-    pub last_name: String,
-    pub grade_level: i32,
-    pub section_name: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct CachedMedicine {
-    pub id: Uuid,
-    pub name: String,
-    pub unit: String,
-}
+/// Saved copies of server-only pages kept per user (oldest dropped first).
+const MAX_RESPONSES: i64 = 300;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credentials {
@@ -48,13 +41,39 @@ pub struct Credentials {
     pub saved_at: DateTime<Utc>,
 }
 
-/// A visit saved on this PC. `body` is exactly what will be POSTed to `/visits`.
+fn post() -> String {
+    "POST".into()
+}
+fn visits_path() -> String {
+    "visits".into()
+}
+fn new_visit() -> String {
+    "New visit".into()
+}
+
+/// A change saved on this PC, uploaded later as `method path` with `body`.
+///
+/// Older versions only queued new visits (`{ body, visited_at, student_label, complaint,
+/// recorded_by }`); the defaults and aliases read those as `POST visits`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PendingVisit {
-    pub body: serde_json::Value,
-    pub visited_at: DateTime<Utc>,
-    pub student_label: String,
-    pub complaint: String,
+pub struct PendingOp {
+    #[serde(default = "post")]
+    pub method: String,
+    #[serde(default = "visits_path")]
+    pub path: String,
+    pub body: Option<serde_json::Value>,
+    /// When the change was made.
+    #[serde(alias = "visited_at")]
+    pub at: DateTime<Utc>,
+    /// e.g. "New visit", "Student record edited".
+    #[serde(default = "new_visit")]
+    pub action: String,
+    /// Usually the student, e.g. "Dela Cruz, Juan".
+    #[serde(alias = "student_label")]
+    pub label: String,
+    /// e.g. the complaint.
+    #[serde(alias = "complaint")]
+    pub summary: String,
     pub recorded_by: String,
 }
 
@@ -67,11 +86,30 @@ pub struct OutboxItem {
     pub status: String,
     pub attempts: i64,
     pub last_error: Option<String>,
-    pub visit: PendingVisit,
+    pub op: PendingOp,
+}
+
+/// A record opened while offline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViewEntry {
+    pub table_name: String,
+    pub record_id: Uuid,
+    pub viewed_at: DateTime<Utc>,
+}
+
+struct Inner {
+    conn: Connection,
+    /// The base, decrypted on first use and kept in memory until logout.
+    base: Option<Mirror>,
+    /// Base + pending changes; rebuilt after any change to either.
+    view: Option<Arc<Mirror>>,
+    /// Goes up whenever the copy is cleared (logout, school change), so a download
+    /// that started before can't write into the cleared copy.
+    epoch: u64,
 }
 
 pub struct Cache {
-    conn: Mutex<Connection>,
+    inner: Mutex<Inner>,
     cipher: Cipher,
 }
 
@@ -104,8 +142,14 @@ impl Cache {
             "PRAGMA secure_delete = ON;
              CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS credentials (username TEXT PRIMARY KEY, payload BLOB NOT NULL);
-             CREATE TABLE IF NOT EXISTS students (id TEXT PRIMARY KEY, payload BLOB NOT NULL);
-             CREATE TABLE IF NOT EXISTS medicines (id TEXT PRIMARY KEY, payload BLOB NOT NULL);
+             -- Replaced by the m_* tables (the full offline copy).
+             DROP TABLE IF EXISTS students;
+             DROP TABLE IF EXISTS medicines;
+             CREATE TABLE IF NOT EXISTS m_sections (id TEXT PRIMARY KEY, payload BLOB NOT NULL);
+             CREATE TABLE IF NOT EXISTS m_students (id TEXT PRIMARY KEY, payload BLOB NOT NULL);
+             CREATE TABLE IF NOT EXISTS m_medicines (id TEXT PRIMARY KEY, payload BLOB NOT NULL);
+             CREATE TABLE IF NOT EXISTS m_visits (id TEXT PRIMARY KEY, payload BLOB NOT NULL);
+             CREATE TABLE IF NOT EXISTS m_staff (id TEXT PRIMARY KEY, payload BLOB NOT NULL);
              CREATE TABLE IF NOT EXISTS outbox (
                  id TEXT PRIMARY KEY,
                  school_id TEXT NOT NULL,
@@ -115,10 +159,23 @@ impl Cache {
                  attempts INTEGER NOT NULL DEFAULT 0,
                  last_error BLOB,
                  payload BLOB NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS views (
+                 id TEXT PRIMARY KEY,
+                 school_id TEXT NOT NULL,
+                 user_id TEXT NOT NULL,
+                 payload BLOB NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS responses (
+                 user_id TEXT NOT NULL,
+                 key TEXT NOT NULL,
+                 saved_at TEXT NOT NULL,
+                 payload BLOB NOT NULL,
+                 PRIMARY KEY (user_id, key)
              );",
         )
         .map_err(db_err)?;
-        Ok(Self { conn: Mutex::new(conn), cipher })
+        Ok(Self { inner: Mutex::new(Inner { conn, base: None, view: None, epoch: 0 }), cipher })
     }
 
     fn seal<T: Serialize>(&self, aad: &str, value: &T) -> Vec<u8> {
@@ -132,39 +189,44 @@ impl Cache {
 
     // ---------- meta ----------
 
-    fn meta_get(&self, key: &str) -> R<Option<String>> {
-        self.conn
-            .lock()
-            .unwrap()
-            .query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| r.get(0))
-            .optional()
-            .map_err(db_err)
+    fn meta_get_in(conn: &Connection, key: &str) -> R<Option<String>> {
+        conn.query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| r.get(0)).optional().map_err(db_err)
     }
 
-    fn meta_set(&self, key: &str, value: &str) -> R<()> {
-        self.conn
-            .lock()
-            .unwrap()
-            .execute("INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value", params![key, value])
-            .map_err(db_err)?;
+    fn meta_set_in(conn: &Connection, key: &str, value: &str) -> R<()> {
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )
+        .map_err(db_err)?;
         Ok(())
     }
 
+    fn meta_get(&self, key: &str) -> R<Option<String>> {
+        Self::meta_get_in(&self.inner.lock().unwrap().conn, key)
+    }
+
     /// The cache belongs to one school. If this install now points at another school,
-    /// the old school's lists and logins are dropped.
+    /// the old school's records and logins are dropped.
     pub fn ensure_school(&self, school_id: Uuid) -> R<()> {
         let current = self.meta_get("school_id")?;
         if current.as_deref() != Some(&school_id.to_string()) {
             if current.is_some() {
-                self.clear_reference_data()?;
+                self.clear_reference_data(true)?;
             }
-            self.meta_set("school_id", &school_id.to_string())?;
+            Self::meta_set_in(&self.inner.lock().unwrap().conn, "school_id", &school_id.to_string())?;
         }
         Ok(())
     }
 
-    pub fn lists_refreshed_at(&self) -> R<Option<DateTime<Utc>>> {
-        Ok(self.meta_get("lists_refreshed_at")?.and_then(|v| v.parse().ok()))
+    /// When the offline copy was last brought up to date from the server.
+    pub fn synced_at(&self) -> R<Option<DateTime<Utc>>> {
+        Ok(self.meta_get("synced_at")?.and_then(|v| v.parse().ok()))
+    }
+
+    #[cfg(test)]
+    pub fn cursors(&self) -> R<Option<Cursors>> {
+        Ok(self.meta_get("sync_cursors")?.and_then(|v| serde_json::from_str(&v).ok()))
     }
 
     // ---------- credentials ----------
@@ -172,9 +234,10 @@ impl Cache {
     pub fn save_credentials(&self, username: &str, creds: &Credentials) -> R<()> {
         let key = username.to_lowercase();
         let blob = self.seal(&format!("credentials:{key}"), creds);
-        self.conn
+        self.inner
             .lock()
             .unwrap()
+            .conn
             .execute(
                 "INSERT INTO credentials (username, payload) VALUES (?1, ?2)
                  ON CONFLICT(username) DO UPDATE SET payload = excluded.payload",
@@ -187,122 +250,202 @@ impl Cache {
     pub fn credentials(&self, username: &str) -> R<Option<Credentials>> {
         let key = username.to_lowercase();
         let blob: Option<Vec<u8>> = self
-            .conn
+            .inner
             .lock()
             .unwrap()
+            .conn
             .query_row("SELECT payload FROM credentials WHERE username = ?1", params![key], |r| r.get(0))
             .optional()
             .map_err(db_err)?;
         blob.map(|b| self.unseal(&format!("credentials:{key}"), &b)).transpose()
     }
 
-    // ---------- students & medicines ----------
+    // ---------- the offline copy ----------
 
-    pub fn replace_lists(&self, students: &[CachedStudent], medicines: &[CachedMedicine]) -> R<()> {
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction().map_err(db_err)?;
-        tx.execute("DELETE FROM students", []).map_err(db_err)?;
-        tx.execute("DELETE FROM medicines", []).map_err(db_err)?;
-        for s in students {
-            let id = s.id.to_string();
-            tx.execute("INSERT INTO students (id, payload) VALUES (?1, ?2)", params![id, self.seal(&format!("students:{id}"), s)])
+    fn load_base(&self, conn: &Connection) -> R<Mirror> {
+        let mut m = Mirror::default();
+        for table in Table::ALL {
+            let name = table.sql_name();
+            let mut stmt = conn.prepare(&format!("SELECT id, payload FROM {name}")).map_err(db_err)?;
+            let rows: Vec<(String, Vec<u8>)> = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(db_err)?
+                .collect::<Result<_, _>>()
                 .map_err(db_err)?;
+            for (id, blob) in rows {
+                let value: serde_json::Value = self.unseal(&format!("{name}:{id}"), &blob)?;
+                let row = Change::from_payload(table, value).map_err(|e| format!("offline cache row is unreadable: {e}"))?;
+                m.apply(&row);
+            }
         }
-        for m in medicines {
-            let id = m.id.to_string();
-            tx.execute("INSERT INTO medicines (id, payload) VALUES (?1, ?2)", params![id, self.seal(&format!("medicines:{id}"), m)])
-                .map_err(db_err)?;
-        }
-        tx.execute(
-            "INSERT INTO meta (key, value) VALUES ('lists_refreshed_at', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![Utc::now().to_rfc3339()],
-        )
-        .map_err(db_err)?;
-        tx.commit().map_err(db_err)
-    }
-
-    fn all<T: DeserializeOwned>(&self, table: &'static str) -> R<Vec<T>> {
-        let conn = self.conn.lock().unwrap();
-        let sql = match table {
-            "students" => "SELECT id, payload FROM students",
-            "medicines" => "SELECT id, payload FROM medicines",
-            _ => unreachable!("fixed table names only"),
-        };
-        let mut stmt = conn.prepare(sql).map_err(db_err)?;
-        let rows: Vec<(String, Vec<u8>)> = stmt
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
-            .map_err(db_err)?
-            .collect::<Result<_, _>>()
-            .map_err(db_err)?;
-        rows.iter().map(|(id, blob)| self.unseal(&format!("{table}:{id}"), blob)).collect()
-    }
-
-    pub fn medicines(&self) -> R<Vec<CachedMedicine>> {
-        let mut m: Vec<CachedMedicine> = self.all("medicines")?;
-        m.sort_by_key(|x| x.name.to_lowercase());
         Ok(m)
     }
 
-    pub fn student(&self, id: Uuid) -> R<Option<CachedStudent>> {
-        Ok(self.all::<CachedStudent>("students")?.into_iter().find(|s| s.id == id))
+    fn base_mut<'a>(&self, inner: &'a mut Inner) -> R<&'a mut Mirror> {
+        if inner.base.is_none() {
+            inner.base = Some(self.load_base(&inner.conn)?);
+        }
+        Ok(inner.base.as_mut().expect("loaded"))
     }
 
-    /// Same matching as the server: name words in order ("first last" or "last, first"),
-    /// or the start of an LRN. Values are decrypted in memory only.
-    pub fn search_students(&self, q: &str, limit: usize) -> R<Vec<CachedStudent>> {
-        let words: Vec<String> = q.to_lowercase().replace(',', " ").split_whitespace().map(str::to_string).collect();
-        if words.is_empty() {
-            return Ok(vec![]);
+    fn persist(&self, tx: &rusqlite::Transaction, changes: &[Change]) -> R<()> {
+        for c in changes {
+            let name = c.table().sql_name();
+            let id = c.id().to_string();
+            match c.payload() {
+                Some(p) => tx
+                    .execute(
+                        &format!("INSERT INTO {name} (id, payload) VALUES (?1, ?2) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload"),
+                        params![id, self.seal(&format!("{name}:{id}"), &p)],
+                    )
+                    .map_err(db_err)?,
+                None => tx.execute(&format!("DELETE FROM {name} WHERE id = ?1"), params![id]).map_err(db_err)?,
+            };
         }
-        let in_order = |hay: &str| {
-            let mut rest = hay;
-            words.iter().all(|w| match rest.find(w.as_str()) {
-                Some(i) => {
-                    rest = &rest[i + w.len()..];
-                    true
-                }
-                None => false,
-            })
+        Ok(())
+    }
+
+    /// Where the next download starts (`None` = from scratch), and the copy's epoch,
+    /// which the download hands back to [`Self::apply_sync_page`].
+    pub fn sync_start(&self) -> R<(Option<Cursors>, u64)> {
+        let inner = self.inner.lock().unwrap();
+        let cursors = Self::meta_get_in(&inner.conn, "sync_cursors")?.and_then(|v| serde_json::from_str(&v).ok());
+        Ok((cursors, inner.epoch))
+    }
+
+    /// Applies one page of `GET /sync` to the base and remembers where it left off.
+    /// `fresh` = the first page of a sync from scratch: everything held before is dropped.
+    /// Refused if the copy was cleared since the download started (`epoch` changed).
+    pub fn apply_sync_page(&self, page: SyncPage, fresh: bool, epoch: u64) -> R<()> {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.epoch != epoch {
+            return Err("The offline copy was cleared while it was downloading.".into());
+        }
+        if fresh {
+            for t in Table::ALL {
+                inner.conn.execute(&format!("DELETE FROM {}", t.sql_name()), []).map_err(db_err)?;
+            }
+            inner.base = Some(Mirror::default());
+        }
+        let next = page.next.clone();
+        let changes = page.changes(self.base_mut(&mut inner)?);
+        let tx = inner.conn.transaction().map_err(db_err)?;
+        self.persist(&tx, &changes)?;
+        Self::meta_set_in(&tx, "sync_cursors", &serde_json::to_string(&next).expect("serializable"))?;
+        Self::meta_set_in(&tx, "synced_at", &Utc::now().to_rfc3339())?;
+        tx.commit().map_err(db_err)?;
+        let base = self.base_mut(&mut inner)?;
+        base.apply_all(&changes);
+        if !changes.is_empty() || fresh {
+            inner.view = None;
+        }
+        Ok(())
+    }
+
+    /// Puts rows straight into the base: a change the server just accepted, so it
+    /// shows until the next sync brings the server's own copy.
+    pub fn apply_to_base(&self, changes: &[Change]) -> R<()> {
+        if changes.is_empty() {
+            return Ok(());
+        }
+        let mut inner = self.inner.lock().unwrap();
+        let tx = inner.conn.transaction().map_err(db_err)?;
+        self.persist(&tx, changes)?;
+        tx.commit().map_err(db_err)?;
+        self.base_mut(&mut inner)?.apply_all(changes);
+        inner.view = None;
+        Ok(())
+    }
+
+    /// A waiting change the server accepted: it moves from the outbox into the base,
+    /// so it keeps showing until the next sync brings the server's own copy.
+    pub fn accept(&self, item: &OutboxItem) -> R<()> {
+        let mut inner = self.inner.lock().unwrap();
+        let changes = replayed(self.base_mut(&mut inner)?, item.user_id, &item.op.recorded_by, item.op.at, &item.op);
+        let tx = inner.conn.transaction().map_err(db_err)?;
+        self.persist(&tx, &changes)?;
+        tx.execute("DELETE FROM outbox WHERE id = ?1", params![item.id.to_string()]).map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        self.base_mut(&mut inner)?.apply_all(&changes);
+        inner.view = None;
+        Ok(())
+    }
+
+    /// A change that went straight to the server: copied into the base the same way.
+    pub fn accept_direct(&self, user_id: Uuid, user_name: &str, method: &str, path: &str, body: Option<&serde_json::Value>) -> R<()> {
+        let op = PendingOp {
+            method: method.into(),
+            path: path.into(),
+            body: body.cloned(),
+            at: Utc::now(),
+            action: String::new(),
+            label: String::new(),
+            summary: String::new(),
+            recorded_by: user_name.into(),
         };
-        let mut out: Vec<CachedStudent> = self
-            .all::<CachedStudent>("students")?
-            .into_iter()
-            .filter(|s| {
-                let mid = s.middle_name.as_deref().unwrap_or("");
-                let a = format!("{} {} {}", s.first_name, mid, s.last_name).to_lowercase();
-                let b = format!("{} {} {}", s.last_name, s.first_name, mid).to_lowercase();
-                (words.len() == 1 && s.lrn.starts_with(&words[0])) || in_order(&a) || in_order(&b)
-            })
-            .collect();
-        out.sort_by(|x, y| {
-            (x.last_name.to_lowercase(), x.first_name.to_lowercase()).cmp(&(y.last_name.to_lowercase(), y.first_name.to_lowercase()))
-        });
-        out.truncate(limit);
-        Ok(out)
+        let changes = {
+            let mut inner = self.inner.lock().unwrap();
+            replayed(self.base_mut(&mut inner)?, user_id, user_name, op.at, &op)
+        };
+        self.apply_to_base(&changes)
+    }
+
+    /// The records as the app should show them offline: the base plus this school's
+    /// changes still waiting to upload (from any user on this PC), in the order made.
+    pub fn view(&self) -> R<Arc<Mirror>> {
+        // One lock for the whole build, so a change saved meanwhile can't be left out.
+        let mut inner = self.inner.lock().unwrap();
+        if let Some(v) = &inner.view {
+            return Ok(v.clone());
+        }
+        let school: Option<Uuid> = Self::meta_get_in(&inner.conn, "school_id")?.and_then(|v| v.parse().ok());
+        let pending: Vec<OutboxItem> = match school {
+            Some(s) => self.outbox_in(&inner.conn, s)?.into_iter().filter(|i| i.status == "pending").collect(),
+            None => vec![],
+        };
+        let mut view = self.base_mut(&mut inner)?.clone();
+        for item in &pending {
+            replay(&mut view, item);
+        }
+        let view = Arc::new(view);
+        inner.view = Some(view.clone());
+        Ok(view)
     }
 
     // ---------- outbox ----------
 
-    pub fn outbox_add(&self, school_id: Uuid, user_id: Uuid, id: Uuid, visit: &PendingVisit) -> R<()> {
-        let blob = self.seal(&format!("outbox:{id}"), visit);
-        self.conn
-            .lock()
-            .unwrap()
+    pub fn outbox_add(&self, school_id: Uuid, user_id: Uuid, id: Uuid, op: &PendingOp) -> R<()> {
+        let blob = self.seal(&format!("outbox:{id}"), op);
+        let mut inner = self.inner.lock().unwrap();
+        inner
+            .conn
             .execute(
                 "INSERT INTO outbox (id, school_id, user_id, created_at, status, payload) VALUES (?1, ?2, ?3, ?4, 'pending', ?5)",
-                params![id.to_string(), school_id.to_string(), user_id.to_string(), Utc::now().to_rfc3339(), blob],
+                // Microsecond time + insertion keeps the upload order the same as the order made.
+                params![
+                    id.to_string(),
+                    school_id.to_string(),
+                    user_id.to_string(),
+                    Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Micros, true),
+                    blob
+                ],
             )
             .map_err(db_err)?;
+        inner.view = None;
         Ok(())
     }
 
     /// Everything in the outbox for this school, oldest first.
     pub fn outbox(&self, school_id: Uuid) -> R<Vec<OutboxItem>> {
-        let conn = self.conn.lock().unwrap();
+        let inner = self.inner.lock().unwrap();
+        self.outbox_in(&inner.conn, school_id)
+    }
+
+    fn outbox_in(&self, conn: &Connection, school_id: Uuid) -> R<Vec<OutboxItem>> {
         let mut stmt = conn
             .prepare(
                 "SELECT id, user_id, created_at, status, attempts, last_error, payload
-                   FROM outbox WHERE school_id = ?1 ORDER BY created_at, id",
+                   FROM outbox WHERE school_id = ?1 ORDER BY created_at, rowid",
             )
             .map_err(db_err)?;
         type Row = (String, String, String, String, i64, Option<Vec<u8>>, Vec<u8>);
@@ -313,8 +456,6 @@ impl Cache {
             .map_err(db_err)?
             .collect::<Result<_, _>>()
             .map_err(db_err)?;
-        drop(stmt);
-        drop(conn);
         rows.into_iter()
             .map(|(id, user_id, created_at, status, attempts, last_error, payload)| {
                 let aad = format!("outbox:{id}");
@@ -325,87 +466,186 @@ impl Cache {
                     status,
                     attempts,
                     last_error: last_error.map(|b| self.unseal::<String>(&format!("{aad}:error"), &b)).transpose()?,
-                    visit: self.unseal(&aad, &payload)?,
+                    op: self.unseal(&aad, &payload)?,
                 })
             })
             .collect()
     }
 
     pub fn outbox_delete(&self, id: Uuid) -> R<()> {
-        self.conn.lock().unwrap().execute("DELETE FROM outbox WHERE id = ?1", params![id.to_string()]).map_err(db_err)?;
+        let mut inner = self.inner.lock().unwrap();
+        inner.conn.execute("DELETE FROM outbox WHERE id = ?1", params![id.to_string()]).map_err(db_err)?;
+        inner.view = None;
         Ok(())
     }
 
     /// Records an upload attempt. `failed` = the server refused it (won't be retried automatically).
     pub fn outbox_note(&self, id: Uuid, failed: bool, error: Option<&str>) -> R<()> {
         let err_blob = error.map(|e| self.seal(&format!("outbox:{id}:error"), &e.to_string()));
-        self.conn
-            .lock()
-            .unwrap()
+        let mut inner = self.inner.lock().unwrap();
+        inner
+            .conn
             .execute(
                 "UPDATE outbox SET attempts = attempts + 1, status = ?2, last_error = ?3 WHERE id = ?1",
                 params![id.to_string(), if failed { "failed" } else { "pending" }, err_blob],
             )
             .map_err(db_err)?;
+        if failed {
+            inner.view = None;
+        }
         Ok(())
     }
 
-    /// Puts a failed item back in the queue (after the cause was fixed).
-    pub fn outbox_retry(&self, id: Uuid) -> R<()> {
-        self.conn
+    /// Puts a failed item back in the queue, optionally with a changed body
+    /// (e.g. "save anyway" after a possible-duplicate warning).
+    pub fn outbox_retry(&self, id: Uuid, op: Option<&PendingOp>) -> R<()> {
+        let mut inner = self.inner.lock().unwrap();
+        match op {
+            Some(op) => inner.conn.execute(
+                "UPDATE outbox SET status = 'pending', last_error = NULL, payload = ?2 WHERE id = ?1",
+                params![id.to_string(), self.seal(&format!("outbox:{id}"), op)],
+            ),
+            None => inner.conn.execute("UPDATE outbox SET status = 'pending', last_error = NULL WHERE id = ?1", params![id.to_string()]),
+        }
+        .map_err(db_err)?;
+        inner.view = None;
+        Ok(())
+    }
+
+    // ---------- records opened offline ----------
+
+    pub fn log_view(&self, school_id: Uuid, user_id: Uuid, view: &ViewEntry) -> R<()> {
+        let id = Uuid::new_v4();
+        self.inner
             .lock()
             .unwrap()
-            .execute("UPDATE outbox SET status = 'pending', last_error = NULL WHERE id = ?1", params![id.to_string()])
+            .conn
+            .execute(
+                "INSERT INTO views (id, school_id, user_id, payload) VALUES (?1, ?2, ?3, ?4)",
+                params![id.to_string(), school_id.to_string(), user_id.to_string(), self.seal(&format!("views:{id}"), view)],
+            )
             .map_err(db_err)?;
         Ok(())
     }
 
-    // ---------- clearing ----------
-
-    fn clear_reference_data(&self) -> R<()> {
-        self.conn
-            .lock()
-            .unwrap()
-            .execute_batch(
-                "DELETE FROM credentials; DELETE FROM students; DELETE FROM medicines;
-                 DELETE FROM meta WHERE key = 'lists_refreshed_at';",
-            )
-            .map_err(db_err)
+    /// Up to `limit` views by this user, each with its id (the upload's retry key).
+    pub fn views(&self, school_id: Uuid, user_id: Uuid, limit: i64) -> R<Vec<(Uuid, ViewEntry)>> {
+        let inner = self.inner.lock().unwrap();
+        let mut stmt = inner
+            .conn
+            .prepare("SELECT id, payload FROM views WHERE school_id = ?1 AND user_id = ?2 ORDER BY rowid LIMIT ?3")
+            .map_err(db_err)?;
+        let rows: Vec<(String, Vec<u8>)> = stmt
+            .query_map(params![school_id.to_string(), user_id.to_string(), limit], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(db_err)?
+            .collect::<Result<_, _>>()
+            .map_err(db_err)?;
+        drop(stmt);
+        drop(inner);
+        rows.into_iter()
+            .map(|(id, blob)| Ok((id.parse().map_err(|_| "bad view id".to_string())?, self.unseal(&format!("views:{id}"), &blob)?)))
+            .collect()
     }
 
-    /// On logout: drop cached lists and saved logins. Unsent visits stay.
-    pub fn clear_on_logout(&self) -> R<()> {
-        self.clear_reference_data()?;
-        let _ = self.conn.lock().unwrap().execute_batch("VACUUM;");
+    pub fn views_delete(&self, ids: &[Uuid]) -> R<()> {
+        let mut inner = self.inner.lock().unwrap();
+        let tx = inner.conn.transaction().map_err(db_err)?;
+        for id in ids {
+            tx.execute("DELETE FROM views WHERE id = ?1", params![id.to_string()]).map_err(db_err)?;
+        }
+        tx.commit().map_err(db_err)
+    }
+
+    // ---------- saved copies of server-only pages ----------
+
+    pub fn save_response(&self, user_id: Uuid, key: &str, value: &serde_json::Value) -> R<()> {
+        let user = user_id.to_string();
+        let blob = self.seal(&format!("responses:{user}:{key}"), value);
+        let inner = self.inner.lock().unwrap();
+        inner
+            .conn
+            .execute(
+                "INSERT INTO responses (user_id, key, saved_at, payload) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(user_id, key) DO UPDATE SET saved_at = excluded.saved_at, payload = excluded.payload",
+                params![user, key, Utc::now().to_rfc3339(), blob],
+            )
+            .map_err(db_err)?;
+        inner
+            .conn
+            .execute(
+                "DELETE FROM responses WHERE user_id = ?1 AND key NOT IN
+                   (SELECT key FROM responses WHERE user_id = ?1 ORDER BY saved_at DESC LIMIT ?2)",
+                params![user, MAX_RESPONSES],
+            )
+            .map_err(db_err)?;
         Ok(())
     }
+
+    pub fn response(&self, user_id: Uuid, key: &str) -> R<Option<serde_json::Value>> {
+        let user = user_id.to_string();
+        let blob: Option<Vec<u8>> = self
+            .inner
+            .lock()
+            .unwrap()
+            .conn
+            .query_row("SELECT payload FROM responses WHERE user_id = ?1 AND key = ?2", params![user, key], |r| r.get(0))
+            .optional()
+            .map_err(db_err)?;
+        blob.map(|b| self.unseal(&format!("responses:{user}:{key}"), &b)).transpose()
+    }
+
+    // ---------- clearing ----------
+
+    /// Drops records, logins and saved pages. `school_changed` also drops views
+    /// logged for the old school, which can no longer be uploaded.
+    fn clear_reference_data(&self, school_changed: bool) -> R<()> {
+        let mut inner = self.inner.lock().unwrap();
+        inner
+            .conn
+            .execute_batch(
+                "DELETE FROM credentials; DELETE FROM responses;
+                 DELETE FROM m_sections; DELETE FROM m_students; DELETE FROM m_medicines;
+                 DELETE FROM m_visits; DELETE FROM m_staff;
+                 DELETE FROM meta WHERE key IN ('synced_at', 'sync_cursors');",
+            )
+            .map_err(db_err)?;
+        if school_changed {
+            inner.conn.execute("DELETE FROM views", []).map_err(db_err)?;
+        }
+        inner.base = None;
+        inner.view = None;
+        inner.epoch += 1;
+        Ok(())
+    }
+
+    /// On logout: drop the offline copy, saved logins and saved pages. Unsent changes stay.
+    pub fn clear_on_logout(&self) -> R<()> {
+        self.clear_reference_data(false)?;
+        let _ = self.inner.lock().unwrap().conn.execute_batch("VACUUM;");
+        Ok(())
+    }
+}
+
+/// The rows a saved change touches when re-applied on top of `m` (best effort: a
+/// change that no longer fits, e.g. its student was deleted on the server, gives none).
+fn replayed(m: &Mirror, user_id: Uuid, user_name: &str, at: DateTime<Utc>, op: &PendingOp) -> Vec<Change> {
+    let ctx = local::Ctx { user_id, user_name, is_admin: true, plan: None, now: at, replay: true };
+    match local::write(m, &ctx, &op.method, &op.path, op.body.as_ref()) {
+        Some(Ok(w)) => w.changes,
+        _ => vec![],
+    }
+}
+
+fn replay(view: &mut Mirror, item: &OutboxItem) {
+    let changes = replayed(view, item.user_id, &item.op.recorded_by, item.op.at, &item.op);
+    view.apply_all(&changes);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn student(first: &str, last: &str, lrn: &str) -> CachedStudent {
-        CachedStudent {
-            id: Uuid::new_v4(),
-            lrn: lrn.into(),
-            first_name: first.into(),
-            middle_name: None,
-            last_name: last.into(),
-            grade_level: 7,
-            section_name: "Rosal".into(),
-        }
-    }
-
-    fn visit() -> PendingVisit {
-        PendingVisit {
-            body: serde_json::json!({ "complaint": "Headache" }),
-            visited_at: Utc::now(),
-            student_label: "Dela Cruz, Juan".into(),
-            complaint: "Headache".into(),
-            recorded_by: "Nurse Joy".into(),
-        }
-    }
+    use crate::mirror::{MSection, MStudent};
+    use chrono::NaiveDate;
 
     fn creds() -> Credentials {
         Credentials {
@@ -416,100 +656,175 @@ mod tests {
         }
     }
 
-    #[test]
-    fn lists_round_trip_and_search_like_the_server() {
-        let c = Cache::in_memory([1; 32]);
-        let juan = student("Juan", "Dela Cruz", "123456789012");
-        let nina = student("Niña", "Peña", "000000000045");
-        c.replace_lists(&[juan.clone(), nina.clone()], &[CachedMedicine { id: Uuid::new_v4(), name: "Paracetamol".into(), unit: "tablet".into() }])
-            .unwrap();
-        assert_eq!(c.search_students("dela cruz, juan", 10).unwrap(), vec![juan.clone()]);
-        assert_eq!(c.search_students("juan dela", 10).unwrap(), vec![juan.clone()]);
-        assert_eq!(c.search_students("NIÑA", 10).unwrap(), vec![nina.clone()]);
-        assert_eq!(c.search_students("0000", 10).unwrap(), vec![nina.clone()]);
-        assert!(c.search_students("zzz", 10).unwrap().is_empty());
-        assert!(c.search_students("   ", 10).unwrap().is_empty());
-        assert_eq!(c.student(juan.id).unwrap(), Some(juan));
-        assert_eq!(c.medicines().unwrap().len(), 1);
-        assert!(c.lists_refreshed_at().unwrap().is_some());
+    fn section() -> MSection {
+        MSection { id: Uuid::new_v4(), grade_level: 7, section_name: "Rosal".into() }
     }
 
-    #[test]
-    fn stored_rows_are_encrypted() {
-        let c = Cache::in_memory([2; 32]);
-        c.replace_lists(&[student("Juan", "Dela Cruz", "123456789012")], &[]).unwrap();
-        c.outbox_add(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), &visit()).unwrap();
-        c.save_credentials("nurse_joy", &creds()).unwrap();
-        let conn = c.conn.lock().unwrap();
-        for table in ["students", "outbox", "credentials"] {
-            let blob: Vec<u8> = conn.query_row(&format!("SELECT payload FROM {table}"), [], |r| r.get(0)).unwrap();
-            for secret in [&b"Juan"[..], b"123456789012", b"Headache", b"argon2"] {
-                assert!(!blob.windows(secret.len()).any(|w| w == secret), "{table} leaks plaintext");
-            }
+    fn student(section_id: Uuid) -> MStudent {
+        MStudent {
+            id: Uuid::new_v4(),
+            lrn: "123456789012".into(),
+            first_name: "Juan".into(),
+            middle_name: None,
+            last_name: "Dela Cruz".into(),
+            gender: "male".into(),
+            birthdate: NaiveDate::from_ymd_opt(2012, 5, 1).unwrap(),
+            section_id,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    fn page(sections: Vec<MSection>, students: Vec<MStudent>) -> SyncPage {
+        serde_json::from_value(serde_json::json!({
+            "sections": sections, "medicines": [], "staff": [], "students": students, "visits": [], "deleted": [],
+            "next": { "students": "2026-11-26T00:00:00Z|00000000-0000-0000-0000-000000000000", "visits": null, "deleted": null },
+            "more": false
+        }))
+        .unwrap()
+    }
+
+    fn new_visit_op(student: Uuid) -> PendingOp {
+        PendingOp {
+            method: "POST".into(),
+            path: "visits".into(),
+            body: Some(serde_json::json!({ "id": Uuid::new_v4(), "student_id": student, "complaint": "Headache", "treatment": "Rest", "medicines": [] })),
+            at: Utc::now(),
+            action: "New visit".into(),
+            label: "Dela Cruz, Juan".into(),
+            summary: "Headache".into(),
+            recorded_by: "Nurse Joy".into(),
         }
     }
 
     #[test]
-    fn outbox_lifecycle() {
+    fn view_is_the_base_plus_pending_changes() {
+        let c = Cache::in_memory([1; 32]);
+        let school = Uuid::new_v4();
+        c.ensure_school(school).unwrap();
+        let sec = section();
+        let s = student(sec.id);
+        c.apply_sync_page(page(vec![sec], vec![s.clone()]), true, c.sync_start().unwrap().1).unwrap();
+        assert!(c.synced_at().unwrap().is_some() && c.cursors().unwrap().unwrap().students.is_some());
+
+        let (user, op_id) = (Uuid::new_v4(), Uuid::new_v4());
+        c.outbox_add(school, user, op_id, &new_visit_op(s.id)).unwrap();
+        assert_eq!(c.view().unwrap().visits.len(), 1, "pending visit shows offline");
+
+        // Refused by the server: it drops out of the view but stays listed.
+        c.outbox_note(op_id, true, Some("Choose a student from the list.")).unwrap();
+        assert!(c.view().unwrap().visits.is_empty());
+        c.outbox_retry(op_id, None).unwrap();
+        assert_eq!(c.view().unwrap().visits.len(), 1);
+
+        // A later sync doesn't hide changes that are still waiting.
+        c.apply_sync_page(page(vec![], vec![]), false, c.sync_start().unwrap().1).unwrap();
+        assert_eq!(c.view().unwrap().visits.len(), 1);
+        assert!(c.view().unwrap().sections.is_empty(), "sections come in full; missing = deleted");
+    }
+
+    #[test]
+    fn base_survives_reopening_and_rows_are_encrypted() {
+        let dir = std::env::temp_dir().join(format!("clinilog-cache-test-{}", Uuid::new_v4()));
+        let sec = section();
+        {
+            let c = Cache::open(&dir).unwrap();
+            c.apply_sync_page(page(vec![sec.clone()], vec![student(sec.id)]), true, c.sync_start().unwrap().1).unwrap();
+            c.save_credentials("nurse_joy", &creds()).unwrap();
+            let user = Uuid::new_v4();
+            c.save_response(user, "users", &serde_json::json!([{ "full_name": "Nurse Joy" }])).unwrap();
+            c.log_view(Uuid::new_v4(), user, &ViewEntry { table_name: "students".into(), record_id: Uuid::new_v4(), viewed_at: Utc::now() })
+                .unwrap();
+            let inner = c.inner.lock().unwrap();
+            for table in ["m_students", "credentials", "responses", "views"] {
+                let blob: Vec<u8> = inner.conn.query_row(&format!("SELECT payload FROM {table}"), [], |r| r.get(0)).unwrap();
+                for secret in [&b"Juan"[..], b"123456789012", b"argon2", b"Nurse"] {
+                    assert!(!blob.windows(secret.len()).any(|w| w == secret), "{table} leaks plaintext");
+                }
+            }
+        }
+        let c = Cache::open(&dir).unwrap();
+        assert_eq!(c.view().unwrap().students.len(), 1);
+        // Key lost/replaced: the old file is reset, not half-read.
+        drop(c);
+        std::fs::write(dir.join("offline-cache.key"), b"not a valid protected key").unwrap();
+        assert!(Cache::open(&dir).unwrap().view().unwrap().students.is_empty());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn outbox_lifecycle_and_old_queued_visits_still_read() {
         let c = Cache::in_memory([3; 32]);
         let (school, user) = (Uuid::new_v4(), Uuid::new_v4());
         let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
-        c.outbox_add(school, user, a, &visit()).unwrap();
-        c.outbox_add(school, user, b, &visit()).unwrap();
-        assert_eq!(c.outbox(school).unwrap().len(), 2);
-        assert!(c.outbox(Uuid::new_v4()).unwrap().is_empty(), "scoped to school");
-        c.outbox_note(a, false, Some("network")).unwrap();
-        c.outbox_note(b, true, Some("Choose a student from the list.")).unwrap();
+        c.outbox_add(school, user, a, &new_visit_op(Uuid::new_v4())).unwrap();
+        // A visit queued by the previous version of the app.
+        let old = serde_json::json!({
+            "body": { "id": b, "complaint": "Fever" }, "visited_at": Utc::now(),
+            "student_label": "Reyes, Ana", "complaint": "Fever", "recorded_by": "Nurse Joy"
+        });
+        {
+            let inner = c.inner.lock().unwrap();
+            inner
+                .conn
+                .execute(
+                    "INSERT INTO outbox (id, school_id, user_id, created_at, status, payload) VALUES (?1, ?2, ?3, ?4, 'pending', ?5)",
+                    params![b.to_string(), school.to_string(), user.to_string(), Utc::now().to_rfc3339(), c.seal(&format!("outbox:{b}"), &old)],
+                )
+                .unwrap();
+        }
         let items = c.outbox(school).unwrap();
-        let ia = items.iter().find(|i| i.id == a).unwrap();
+        assert_eq!(items.len(), 2);
         let ib = items.iter().find(|i| i.id == b).unwrap();
-        assert_eq!((ia.status.as_str(), ia.attempts), ("pending", 1));
-        assert_eq!((ib.status.as_str(), ib.last_error.as_deref()), ("failed", Some("Choose a student from the list.")));
-        c.outbox_retry(b).unwrap();
-        assert_eq!(c.outbox(school).unwrap().iter().find(|i| i.id == b).unwrap().status, "pending");
+        assert_eq!((ib.op.method.as_str(), ib.op.path.as_str(), ib.op.label.as_str()), ("POST", "visits", "Reyes, Ana"));
+        assert!(c.outbox(Uuid::new_v4()).unwrap().is_empty(), "scoped to school");
+        c.outbox_note(a, true, Some("Choose a student from the list.")).unwrap();
+        assert_eq!(c.outbox(school).unwrap()[0].last_error.as_deref(), Some("Choose a student from the list."));
         c.outbox_delete(a).unwrap();
         assert_eq!(c.outbox(school).unwrap().len(), 1);
     }
 
     #[test]
-    fn logout_clears_everything_but_unsent_visits() {
+    fn logout_clears_everything_but_unsent_changes_and_views() {
         let c = Cache::in_memory([4; 32]);
-        let school = Uuid::new_v4();
-        c.replace_lists(&[student("Juan", "Dela Cruz", "123456789012")], &[]).unwrap();
+        let (school, user) = (Uuid::new_v4(), Uuid::new_v4());
+        c.ensure_school(school).unwrap();
+        let sec = section();
+        c.apply_sync_page(page(vec![sec.clone()], vec![student(sec.id)]), true, c.sync_start().unwrap().1).unwrap();
         c.save_credentials("Nurse_Joy", &creds()).unwrap();
         assert!(c.credentials("NURSE_JOY").unwrap().is_some(), "usernames are case-insensitive");
-        c.outbox_add(school, Uuid::new_v4(), Uuid::new_v4(), &visit()).unwrap();
+        c.save_response(user, "users", &serde_json::json!([])).unwrap();
+        c.log_view(school, user, &ViewEntry { table_name: "students".into(), record_id: Uuid::new_v4(), viewed_at: Utc::now() }).unwrap();
+        c.outbox_add(school, user, Uuid::new_v4(), &new_visit_op(Uuid::new_v4())).unwrap();
         c.clear_on_logout().unwrap();
-        assert!(c.search_students("juan", 10).unwrap().is_empty());
+        assert!(c.view().unwrap().students.is_empty());
         assert!(c.credentials("nurse_joy").unwrap().is_none());
-        assert!(c.lists_refreshed_at().unwrap().is_none());
-        assert_eq!(c.outbox(school).unwrap().len(), 1, "unsent visits survive logout");
+        assert!(c.synced_at().unwrap().is_none() && c.cursors().unwrap().is_none());
+        assert!(c.response(user, "users").unwrap().is_none());
+        assert_eq!(c.outbox(school).unwrap().len(), 1, "unsent changes survive logout");
+        assert_eq!(c.views(school, user, 10).unwrap().len(), 1, "so do views for the audit trail");
     }
 
     #[test]
     fn switching_school_drops_the_old_schools_data() {
         let c = Cache::in_memory([5; 32]);
         c.ensure_school(Uuid::new_v4()).unwrap();
-        c.replace_lists(&[student("Juan", "Dela Cruz", "123456789012")], &[]).unwrap();
+        let sec = section();
+        c.apply_sync_page(page(vec![sec.clone()], vec![student(sec.id)]), true, c.sync_start().unwrap().1).unwrap();
         c.save_credentials("nurse_joy", &creds()).unwrap();
         c.ensure_school(Uuid::new_v4()).unwrap();
-        assert!(c.search_students("juan", 10).unwrap().is_empty());
+        assert!(c.view().unwrap().students.is_empty());
         assert!(c.credentials("nurse_joy").unwrap().is_none());
     }
 
     #[test]
-    fn opening_with_another_key_cannot_read_rows() {
-        let dir = std::env::temp_dir().join(format!("clinilog-cache-test-{}", Uuid::new_v4()));
-        {
-            let c = Cache::open(&dir).unwrap();
-            c.save_credentials("nurse_joy", &creds()).unwrap();
-            assert!(c.credentials("nurse_joy").unwrap().is_some());
-        }
-        // Same key file: still readable after reopening.
-        assert!(Cache::open(&dir).unwrap().credentials("nurse_joy").unwrap().is_some());
-        // Key lost/replaced: the old file is reset, not half-read.
-        std::fs::write(dir.join("offline-cache.key"), b"not a valid protected key").unwrap();
-        assert!(Cache::open(&dir).unwrap().credentials("nurse_joy").unwrap().is_none());
-        std::fs::remove_dir_all(dir).ok();
+    fn a_download_running_during_logout_cant_refill_the_copy() {
+        let c = Cache::in_memory([6; 32]);
+        let (_, epoch) = c.sync_start().unwrap();
+        c.clear_on_logout().unwrap();
+        let sec = section();
+        assert!(c.apply_sync_page(page(vec![sec.clone()], vec![student(sec.id)]), true, epoch).is_err());
+        assert!(c.view().unwrap().students.is_empty());
+        assert!(c.cursors().unwrap().is_none(), "next login starts from scratch");
     }
 }

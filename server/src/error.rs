@@ -30,6 +30,10 @@ pub enum AppError {
     /// 403 with `code: "premium_required"` so the app can show the upgrade message.
     #[error("{0}")]
     PremiumRequired(String),
+    /// 403 with `code: "read_only"`: the subscription is inactive. Changes saved offline
+    /// wait and upload once it's renewed, instead of being treated as refused.
+    #[error("{0}")]
+    ReadOnly(String),
     #[error("Too many failed login attempts. Try again in {retry_after_secs} seconds.")]
     LoginLocked { retry_after_secs: i64 },
     #[error(transparent)]
@@ -48,7 +52,7 @@ impl IntoResponse for AppError {
             AppError::BadRequest(_) | AppError::Validation(_) => StatusCode::BAD_REQUEST,
             AppError::Conflict { .. } => StatusCode::CONFLICT,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            AppError::Forbidden(_) | AppError::PremiumRequired(_) => StatusCode::FORBIDDEN,
+            AppError::Forbidden(_) | AppError::PremiumRequired(_) | AppError::ReadOnly(_) => StatusCode::FORBIDDEN,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::LoginLocked { .. } => StatusCode::TOO_MANY_REQUESTS,
             AppError::Internal(e) => {
@@ -66,6 +70,7 @@ impl IntoResponse for AppError {
             AppError::LoginLocked { retry_after_secs } => body["retry_after_secs"] = json!(retry_after_secs),
             AppError::Validation(fields) => body["fields"] = json!(fields),
             AppError::PremiumRequired(_) => body["code"] = json!("premium_required"),
+            AppError::ReadOnly(_) => body["code"] = json!("read_only"),
             AppError::Conflict { code, details, .. } => {
                 body["code"] = json!(code);
                 if let Some(d) = details {

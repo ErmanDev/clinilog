@@ -27,6 +27,9 @@ pub struct Section {
 
 #[derive(Deserialize)]
 pub struct SectionInput {
+    /// Optional client-generated id; makes create safe to retry (offline changes).
+    #[serde(default)]
+    pub id: Option<Uuid>,
     pub grade_level: i32,
     pub section_name: String,
 }
@@ -73,11 +76,15 @@ pub async fn create(
     Json(input): Json<SectionInput>,
 ) -> AppResult<(StatusCode, Json<Section>)> {
     ensure_writable(&state.db, user.school_id).await?;
+    if let Some(existing) = already_created(&state, user.school_id, input.id).await? {
+        return Ok((StatusCode::OK, Json(existing)));
+    }
     let (grade, name) = validate(&input)?;
 
     let id: Uuid = sqlx::query_scalar(
-        "INSERT INTO sections (school_id, grade_level, section_name) VALUES ($1, $2, $3) RETURNING id",
+        "INSERT INTO sections (id, school_id, grade_level, section_name) VALUES ($1, $2, $3, $4) RETURNING id",
     )
+    .bind(input.id.unwrap_or_else(Uuid::new_v4))
     .bind(user.school_id)
     .bind(grade)
     .bind(&name)
@@ -146,6 +153,20 @@ pub async fn delete(State(state): State<AppState>, user: AuthUser, Path(id): Pat
             _ => e.into(),
         })?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// A retried create whose first attempt made it: the section as it is now.
+async fn already_created(state: &AppState, school_id: Uuid, id: Option<Uuid>) -> AppResult<Option<Section>> {
+    let Some(id) = id else { return Ok(None) };
+    let owner: Option<Uuid> = sqlx::query_scalar("SELECT school_id FROM sections WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?;
+    match owner {
+        None => Ok(None),
+        Some(s) if s == school_id => Ok(Some(fetch(state, school_id, id).await?)),
+        Some(_) => Err(AppError::BadRequest("Invalid section id.".into())),
+    }
 }
 
 async fn fetch(state: &AppState, school_id: Uuid, id: Uuid) -> AppResult<Section> {

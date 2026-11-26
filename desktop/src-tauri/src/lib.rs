@@ -2,6 +2,8 @@ mod api;
 mod cache;
 mod config;
 mod crypto;
+mod local;
+mod mirror;
 mod pdf;
 mod plan;
 mod sync;
@@ -43,6 +45,11 @@ impl Session {
     pub(crate) fn is_superadmin(&self) -> bool {
         self.user.role == "superadmin"
     }
+
+    /// Connected to the server (false after an offline login until the connection returns).
+    pub(crate) fn token_present(&self) -> bool {
+        self.token.is_some()
+    }
 }
 
 pub(crate) struct AppState {
@@ -58,6 +65,8 @@ pub(crate) struct AppState {
     pub(crate) online: AtomicBool,
     pub(crate) sync_wake: tokio::sync::Notify,
     pub(crate) sync_lock: tokio::sync::Mutex<()>,
+    /// Held while changes upload, so they always go up one at a time and in order.
+    pub(crate) upload_lock: tokio::sync::Mutex<()>,
     offline_failures: Mutex<(u32, Option<Instant>)>,
 }
 
@@ -337,7 +346,7 @@ async fn offline_login(
     Ok(info)
 }
 
-/// Ends the session and clears the offline cache. Unsent visits stay (encrypted)
+/// Ends the session and clears the offline copy. Unsent changes stay (encrypted)
 /// and upload the next time their author logs in online.
 #[tauri::command]
 fn logout(state: State<'_, AppState>) {
@@ -388,6 +397,7 @@ async fn fetch_plan(state: State<'_, AppState>) -> Result<plan::PlanState, CmdEr
 }
 
 /// Generic authenticated call to the Clinilog API, e.g. `GET students?q=juan`.
+/// Answered from the offline copy when the server can't be reached (see `sync.rs`).
 #[tauri::command]
 async fn api_request(
     app: tauri::AppHandle,
@@ -404,16 +414,7 @@ async fn api_request(
         _ => return Err(CmdError::new("invalid", "Unsupported request method.")),
     };
     let path = api::safe_api_path(&path)?;
-    let result = match state.ensure_token().await {
-        Ok(token) => state.api()?.request(&token, method, path, body).await,
-        Err(e) => Err(e),
-    };
-    match &result {
-        Err(e) if e.kind == "network" => sync::note_connection(&app, false),
-        Err(e) if e.kind == "unauthorized" => state.clear_session(),
-        _ => sync::note_connection(&app, true),
-    }
-    result
+    sync::request(&app, &state, method, path, body).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -444,6 +445,7 @@ pub fn run() {
                 online: AtomicBool::new(false),
                 sync_wake: tokio::sync::Notify::new(),
                 sync_lock: tokio::sync::Mutex::new(()),
+                upload_lock: tokio::sync::Mutex::new(()),
                 offline_failures: Mutex::new((0, None)),
             });
             tauri::async_runtime::spawn(sync::run(app.handle().clone()));
@@ -465,10 +467,7 @@ pub fn run() {
             sync::sync_now,
             sync::outbox_list,
             sync::outbox_retry,
-            sync::outbox_discard,
-            sync::cached_students,
-            sync::cached_student,
-            sync::cached_medicines
+            sync::outbox_discard
         ])
         .run(tauri::generate_context!())
         .expect("error while running Clinilog");

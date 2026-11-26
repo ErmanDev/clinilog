@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight, Loader2, Plus, Stethoscope } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { PendingVisits } from "../../components/PendingVisits";
+import { PendingChanges } from "../../components/PendingChanges";
 import { buttonClass, ErrorNotice, inputClass } from "../../components/form";
 import { asCmdError, visitsApi, type Visit, type VisitPage } from "../../lib/api";
 import { formatDate, formatDateTime, listName, sectionLabel } from "../../lib/format";
@@ -81,7 +81,7 @@ export function VisitsListPage() {
           {notice}
         </p>
       )}
-      <PendingVisits />
+      <PendingChanges />
       {error && <ErrorNotice>{error}</ErrorNotice>}
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">

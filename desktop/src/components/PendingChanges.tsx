@@ -6,15 +6,15 @@ import { useSync } from "../lib/sync";
 import { ConfirmDialog } from "./Dialog";
 import { buttonClass } from "./form";
 
-/** Visits saved on this PC that haven't reached the server yet. Hidden when there are none. */
-export function PendingVisits() {
+/** Changes saved on this PC that haven't reached the server yet. Hidden when there are none. */
+export function PendingChanges() {
   const { status, syncNow, syncing } = useSync();
   const [items, setItems] = useState<OutboxEntry[]>([]);
   const [toDiscard, setToDiscard] = useState<OutboxEntry | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reload whenever the sync status changes (upload finished, new visit saved, …).
+  // Reload whenever the sync status changes (upload finished, new change saved, …).
   useEffect(() => {
     syncApi.outbox().then(setItems).catch(() => setItems([]));
   }, [status]);
@@ -63,12 +63,14 @@ export function PendingVisits() {
             )}
             <div className="min-w-0 flex-1">
               <p>
-                <span className="font-medium">{i.student_label}</span>
-                <span className="text-slate-500"> · {formatDateTime(i.visited_at)}</span>
+                <span className="text-slate-600">{i.action}:</span> <span className="font-medium">{i.label}</span>
+                <span className="text-slate-500"> · {formatDateTime(i.at)}</span>
               </p>
-              <p className="truncate text-slate-600">{i.complaint}</p>
+              {i.summary && <p className="truncate text-slate-600">{i.summary}</p>}
               {i.status === "failed" && i.last_error && (
-                <p className="mt-1 text-xs font-medium text-red-700">The server didn't accept this visit: {i.last_error}</p>
+                <p className="mt-1 text-xs font-medium text-red-700">
+                  The server didn't accept this change: {i.last_error} Fix the cause and try again, or discard it.
+                </p>
               )}
             </div>
             {i.status === "failed" && (
@@ -91,16 +93,18 @@ export function PendingVisits() {
       )}
       <ConfirmDialog
         open={toDiscard !== null}
-        title="Discard this visit?"
-        confirmLabel="Discard visit"
+        title="Discard this change?"
+        confirmLabel="Discard change"
         busy={busy}
         error={error}
         onCancel={() => setToDiscard(null)}
         onConfirm={() => void discard()}
       >
         <p>
-          The visit of <strong className="font-semibold">{toDiscard?.student_label}</strong> was never uploaded. Discarding deletes it from
-          this PC for good.
+          <strong className="font-semibold">
+            {toDiscard?.action}: {toDiscard?.label}
+          </strong>{" "}
+          was never uploaded. Discarding deletes it from this PC for good.
         </p>
       </ConfirmDialog>
     </section>
