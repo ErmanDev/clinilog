@@ -12,7 +12,6 @@ import {
   type PlanName,
   type PlanOption,
   type PlansResponse,
-  type Term,
 } from "../lib/api";
 import { formatDate, formatDateTime, peso, planLabel } from "../lib/format";
 import { useSession } from "../lib/session";
@@ -36,7 +35,6 @@ export function SubscriptionPage() {
   const [plansError, setPlansError] = useState<string | null>(null);
   const [requests, setRequests] = useState<PaymentRequest[] | null>(null);
   const [requestsError, setRequestsError] = useState<string | null>(null);
-  const [term, setTerm] = useState<Term>("yearly");
   const [paying, setPaying] = useState<PlanOption | null>(null);
   const [cancelling, setCancelling] = useState<PaymentRequest | null>(null);
   const lastPending = useRef<string | null>(null);
@@ -153,10 +151,10 @@ export function SubscriptionPage() {
               Plans
             </h2>
             <p className="text-sm text-slate-500">
-              Pay with GCash, then send the receipt. Your plan changes once Clinilog confirms the payment.
+              One-time payment, valid for 1 year. Pay with GCash, then send the receipt. Your plan changes once Clinilog confirms the
+              payment.
             </p>
           </div>
-          <TermSwitch value={term} onChange={setTerm} />
         </div>
 
         {plansError && <ErrorNotice>{plansError}</ErrorNotice>}
@@ -171,7 +169,6 @@ export function SubscriptionPage() {
               <PlanCard
                 key={p.plan}
                 option={p}
-                term={term}
                 currentPlan={info?.plan}
                 currentActive={!!info && !info.read_only}
                 trial={!!info?.is_trial}
@@ -195,7 +192,6 @@ export function SubscriptionPage() {
       {paying && plans && info && (
         <PayDialog
           option={paying}
-          term={term}
           payment={plans.payment}
           current={{ plan: info.plan, active: !info.read_only, end: info.end_date, trial: info.is_trial }}
           onClose={() => setPaying(null)}
@@ -241,25 +237,6 @@ function PendingNotice({ request, onCancel }: { request: PaymentRequest; onCance
   );
 }
 
-function TermSwitch({ value, onChange }: { value: Term; onChange: (t: Term) => void }) {
-  return (
-    <div role="radiogroup" aria-label="Billing period" className="inline-flex rounded-lg bg-slate-200/70 p-1 text-sm">
-      {(["monthly", "yearly"] as const).map((t) => (
-        <button
-          key={t}
-          type="button"
-          role="radio"
-          aria-checked={value === t}
-          onClick={() => onChange(t)}
-          className={`rounded-md px-3 py-1 font-medium ${value === t ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
-        >
-          {t === "monthly" ? "Monthly" : "Yearly"}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 const FEATURES = (o: PlanOption) => [
   o.limits.max_students === null ? "Unlimited student records" : `Up to ${o.limits.max_students} student records`,
   `Up to ${o.limits.max_users} user accounts`,
@@ -270,7 +247,6 @@ const FEATURES = (o: PlanOption) => [
 
 function PlanCard({
   option,
-  term,
   currentPlan,
   currentActive,
   trial,
@@ -278,7 +254,6 @@ function PlanCard({
   onChoose,
 }: {
   option: PlanOption;
-  term: Term;
   currentPlan?: PlanName;
   currentActive: boolean;
   /** The school is on its free trial. */
@@ -289,13 +264,11 @@ function PlanCard({
 }) {
   const isCurrent = currentPlan === option.plan;
   const premium = option.plan === "premium";
-  const price = term === "monthly" ? option.monthly_php : option.yearly_php;
   const action = isCurrent
     ? `${trial ? "Continue with" : "Renew"} ${planLabel(option.plan)}`
     : premium
       ? "Upgrade to Premium"
       : "Switch to Basic";
-  const saving = option.monthly_php * 12 - option.yearly_php;
 
   return (
     <div className={`flex flex-col rounded-xl border bg-white p-5 shadow-sm ${premium ? "border-amber-300 ring-1 ring-amber-200" : "border-slate-200"}`}>
@@ -309,15 +282,17 @@ function PlanCard({
         )}
       </div>
       <p className="mt-2">
-        <span className="text-3xl font-semibold tabular-nums">{peso(price)}</span>
-        <span className="text-sm text-slate-500"> / {term === "monthly" ? "month" : "year"}</span>
+        <span className="text-3xl font-semibold tabular-nums">{peso(option.price_php)}</span>
+        <span className="text-sm text-slate-500"> one-time payment</span>
       </p>
       <p className="text-xs text-slate-500">
-        {term === "yearly"
-          ? saving > 0
-            ? `Save ${peso(saving)} compared with paying monthly`
-            : "Billed once a year"
-          : `${peso(option.yearly_php)} if paid yearly`}
+        Valid for {validFor(option.months)}
+        {option.first_payment && option.renewal_php !== option.price_php && (
+          <>
+            {" "}
+            · then <span className="font-semibold text-slate-700">{peso(option.renewal_php)}</span> if you renew
+          </>
+        )}
       </p>
       <ul className="mt-4 flex-1 space-y-2 text-sm text-slate-700">
         {FEATURES(option).map((f) => (
@@ -340,6 +315,10 @@ function PlanCard({
   );
 }
 
+function validFor(months: number) {
+  return months % 12 === 0 ? `${months / 12} year${months === 12 ? "" : "s"}` : `${months} months`;
+}
+
 /** When the new plan would start if approved today, mirroring the server's rule. */
 function startText(option: PlanOption, current: { plan: PlanName; active: boolean; end: string | null; trial: boolean }) {
   if (current.active && current.plan === option.plan && current.end) {
@@ -355,14 +334,12 @@ function startText(option: PlanOption, current: { plan: PlanName; active: boolea
 
 function PayDialog({
   option,
-  term,
   payment,
   current,
   onClose,
   onSent,
 }: {
   option: PlanOption;
-  term: Term;
   payment: PaymentInfo;
   current: { plan: PlanName; active: boolean; end: string | null; trial: boolean };
   onClose: () => void;
@@ -376,7 +353,7 @@ function PayDialog({
   const [fields, setFields] = useState<Record<string, string>>({});
   const [sent, setSent] = useState<PaymentRequest | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const price = term === "monthly" ? option.monthly_php : option.yearly_php;
+  const price = option.price_php;
 
   async function pickFile(file: File | undefined) {
     if (!file) return;
@@ -403,7 +380,7 @@ function PayDialog({
     setBusy(true);
     setError(null);
     try {
-      const r = await subscriptionApi.submit({ plan: option.plan, term, reference_no: reference, receipt_image: receipt! });
+      const r = await subscriptionApi.submit({ plan: option.plan, reference_no: reference, receipt_image: receipt! });
       setSent(r);
       onSent();
     } catch (e) {
@@ -453,7 +430,7 @@ function PayDialog({
       open
       wide
       onClose={() => !busy && onClose()}
-      title={`${current.plan === option.plan && !current.trial ? "Renew" : "Get"} ${planLabel(option.plan)} — ${term === "monthly" ? "monthly" : "yearly"}`}
+      title={`${current.plan === option.plan && !current.trial ? "Renew" : "Get"} ${planLabel(option.plan)}`}
       footer={
         <>
           <button type="button" className={buttonClass("secondary")} onClick={onClose} disabled={busy}>
@@ -484,8 +461,11 @@ function PayDialog({
             <p className="text-xs font-medium text-slate-500">Amount to pay</p>
             <p className="text-2xl font-semibold tabular-nums">{peso(price)}</p>
             <p className="text-xs text-slate-500">
-              {planTermLabel(option.plan, term)} · {startText(option, current)}
+              One-time payment · {planLabel(option.plan)}, valid for {validFor(option.months)} · {startText(option, current)}
             </p>
+            {option.first_payment && option.renewal_php !== option.price_php && (
+              <p className="mt-1 text-xs text-slate-500">After that, renewing costs {peso(option.renewal_php)}.</p>
+            )}
           </div>
 
           <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700">

@@ -19,7 +19,7 @@ use crate::{
     activity::{self, Action},
     auth::{AuthUser, SuperadminAuth},
     error::{unique_violation, AppError, AppResult},
-    subscription::{self, price_php, Plan, SubscriptionInfo, Term},
+    subscription::{self, is_first_payment, price_php, Plan, SubscriptionInfo, Term},
     validate::FieldErrors,
     AppState,
 };
@@ -92,7 +92,9 @@ fn data_url(mime: &str, bytes: &[u8]) -> String {
 #[derive(Deserialize)]
 pub struct CreateInput {
     pub plan: Plan,
-    pub term: Term,
+    /// Sent only by app versions from before one-time payments, which show old prices.
+    #[serde(default)]
+    pub term: Option<Term>,
     #[serde(default)]
     pub reference_no: String,
     /// Data URL or base64 of the receipt image.
@@ -157,15 +159,21 @@ pub async fn create(
             None
         }
     };
+    if input.term.is_some() {
+        return Err(AppError::BadRequest(
+            "Prices have changed. Update Clinilog to the latest version, then send your payment again.".into(),
+        ));
+    }
     e.finish()?;
     let (bytes, mime) = receipt.expect("checked above");
-    let amount = price_php(input.plan, input.term);
 
     let mut tx = state.db.begin().await?;
     sqlx::query("SELECT 1 FROM schools WHERE id = $1 FOR UPDATE")
         .bind(admin.school_id)
         .execute(&mut *tx)
         .await?;
+    // Decided under the school lock, so two requests can't both get the first-payment price.
+    let amount = price_php(input.plan, is_first_payment(&mut *tx, admin.school_id).await?);
     let id: Uuid = sqlx::query_scalar(
         "INSERT INTO subscription_requests
              (school_id, requested_by, plan, term, amount_php, reference_no, receipt_image, receipt_mime)
@@ -174,7 +182,7 @@ pub async fn create(
     .bind(admin.school_id)
     .bind(admin.id)
     .bind(input.plan)
-    .bind(input.term)
+    .bind(Term::Yearly)
     .bind(amount)
     .bind(&reference)
     .bind(&bytes)
@@ -196,7 +204,7 @@ pub async fn create(
     })?;
     activity::log(&mut tx, &admin, Action::Create, TABLE, id).await?;
     tx.commit().await?;
-    tracing::info!(school_id = %admin.school_id, request_id = %id, plan = ?input.plan, term = ?input.term, "payment request sent");
+    tracing::info!(school_id = %admin.school_id, request_id = %id, plan = ?input.plan, amount, "payment request sent");
     Ok((StatusCode::CREATED, Json(school_request(&state.db, admin.school_id, id).await?)))
 }
 

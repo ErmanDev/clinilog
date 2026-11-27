@@ -137,7 +137,7 @@
 <!-- ===================== 1 ===================== -->
 <h2 id="s1"><span class="num">1.</span>About Clinilog</h2>
 <p>Clinilog is the school clinic's records system. Clinic staff use it to keep <b>student health profiles</b>, record <b>clinic visits</b> (complaint, treatment and medicines given), search past records and print <b>reports</b>. Students don't use the app; they tell the nurse their complaint and the nurse records it.</p>
-<p>Records are kept safely on Clinilog's server, so every clinic PC sees the same, up-to-date information. If the internet goes down, nurses can still record new visits; they upload automatically when the connection returns (see section 14).</p>
+<p>Records are kept safely on Clinilog's server, so every clinic PC sees the same, up-to-date information. Each clinic PC also keeps its own copy of the school's records, so if the internet goes down you can keep working: log in, look up students, record visits and print reports. Everything done offline uploads automatically when the connection returns (see section 14).</p>
 
 <h3>Two kinds of users</h3>
 <p>What you can see and do depends on the account you log in with, not on the computer.</p>
@@ -163,7 +163,7 @@
     <p style="margin:0 0 4px">The same 5, plus:</p>
     <ol start="6"><li><b>User Accounts</b>: who can log in</li><li><b>Subscription</b>: plan and renewal</li><li><b>Activity Log</b>: who did what</li><li><b>Settings</b>: sections and medicines</li></ol></div>
 </div>
-<p>At the bottom of the sidebar you'll always see the <b>connection card</b> (Online / Offline and how many visits are waiting to upload), your name and role, and <span class="ui">Log out</span>.</p>
+<p>At the bottom of the sidebar you'll always see the <b>connection card</b> (Online / Offline, how many changes are waiting to upload, and when the records on this PC were last updated), your name and role, and <span class="ui">Log out</span>.</p>
 
 <!-- ===================== 2 ===================== -->
 <h2 id="s2"><span class="num">2.</span>Getting started: install, open and log in <span class="who all">ALL USERS</span></h2>
@@ -195,7 +195,7 @@
 <h3>Logging in</h3>
 <figure><img src="img/01-login.png" alt="" /><figcaption>The login screen, showing your school's name. The left side shows a short animation of the clinic flow.</figcaption></figure>
 <ol class="steps">
-  <li>Wait until any <b>"Connecting to server…"</b> message disappears. The first time each day it can take <b>up to about a minute</b> while the server wakes up. This is normal.</li>
+  <li>If you see <b>"Connecting to server…"</b>, wait until it disappears. The first time each day it can take <b>up to about a minute</b> while the server wakes up. This is normal. If the PC has no internet, Clinilog says <b>"You're offline"</b> straight away instead, and you can still log in (section 14).</li>
   <li>Type your <b>Username</b> (capital letters don't matter: <code>Nurse_Joy</code> = <code>nurse_joy</code>).</li>
   <li>Type your <b>Password</b>. Passwords <b>are</b> case-sensitive. Clinilog warns you if <kbd>Caps Lock</kbd> is on. Click the eye icon to show or hide what you typed.</li>
   <li>Click <span class="ui">Log in</span>. The button stays grey until both boxes are filled.</li>
@@ -204,7 +204,7 @@
 <div class="box tip"><p><span class="label">Forgot your password?</span> Ask your clinic administrator to reset it. Staff can't reset their own password.</p></div>
 
 <h3>Logging out</h3>
-<p>Click <span class="ui">Log out</span> at the bottom of the sidebar when you finish or leave the PC. If visits are still waiting to upload, Clinilog tells you first; they are kept on the PC and upload the next time you log in while online.</p>
+<p>Click <span class="ui">Log out</span> at the bottom of the sidebar when you finish or leave the PC. If changes are still waiting to upload, Clinilog tells you first; they are kept on the PC and upload the next time you log in while online. Logging out doesn't remove the school's records from the PC, so the next person can still log in and work if the internet is down.</p>
 
 <!-- ===================== 3 ===================== -->
 <h2 id="s3"><span class="num">3.</span>The everyday clinic flow <span class="who all">ALL USERS</span></h2>
@@ -240,7 +240,7 @@
   <li><b>Recent visits</b>: the 10 latest visits. Click any row to open it, or <span class="ui">View all</span> for the full list.</li>
   <li><span class="ui">New visit</span> (top right) starts recording a visit straight away.</li>
 </ul>
-<p>The Dashboard refreshes itself every minute. If visits are waiting to upload (offline), a <b>Waiting to upload</b> box appears here too.</p>
+<p>The Dashboard refreshes itself every minute. If changes are waiting to upload (offline), a <b>Waiting to upload</b> box appears here too.</p>
 
 <!-- ===================== 5 ===================== -->
 <h2 id="s5"><span class="num">5.</span>Students <span class="who all">ALL USERS</span></h2>
@@ -389,9 +389,16 @@
 <div class="box tip"><p><span class="label">Free trial.</span> A new school starts with a <b>free 30-day trial of the Basic plan</b>. A blue banner shows how many days are left. To keep using Clinilog afterwards, choose a plan and pay before the trial ends. Paying for Basic during the trial starts after the trial ends, so you don't lose any trial days.</p></div>
 <p>This page shows your school's plan and lets you renew, upgrade or switch plans. You pay with <b>GCash</b> by scanning a QR code, then send the receipt. Clinilog checks the payment, and your plan changes once it is <b>approved</b>.</p>
 <figure><img src="img/16-subscription.png" alt="" /><figcaption>Current subscription (top), the plans you can choose, and your payment history (bottom).</figcaption></figure>
+<h3>Prices</h3>
+<p>Every payment is a <b>one-time payment that keeps the plan for 1 year</b>. Nothing is charged automatically. When the year is up, you decide whether to renew.</p>
+<table>
+  <tr><th>Plan</th><th class="c">Your school's first payment</th><th class="c">Each payment after that</th></tr>
+  <tr><td>Basic</td><td class="c">₱150</td><td class="c">₱1,800</td></tr>
+  <tr><td>Premium</td><td class="c">₱300</td><td class="c">₱3,600</td></tr>
+</table>
+<p>The first-payment price applies once per school: to the first payment Clinilog approves. Renewing, or switching between Basic and Premium after that, costs the regular price. The plan cards always show what your school pays now.</p>
 <h3>Paying for a plan</h3>
 <ol class="steps">
-  <li>Choose <b>Monthly</b> or <b>Yearly</b> at the top of the plans.</li>
   <li>On a plan card, click <span class="ui">Renew …</span> (your current plan), <span class="ui">Upgrade to Premium</span> or <span class="ui">Switch to Basic</span>. A window shows the QR code and the exact amount to pay.</li>
   <li>Open <b>GCash</b> on your phone, tap <b>QR</b>, and scan the code on the screen. Pay <b>exactly</b> the amount shown.</li>
   <li>Take a <b>screenshot of the GCash receipt</b> on your phone and copy it to this computer (for example by email or Messenger).</li>
@@ -458,30 +465,84 @@
 
 <!-- ===================== 14 ===================== -->
 <h2 id="s14"><span class="num">14.</span>Working without internet (offline mode) <span class="who all">ALL USERS</span></h2>
-<p>Clinilog keeps working for the most important job, recording clinic visits, when the internet is down.</p>
+<p>Every clinic PC keeps its own copy of your school's records. When the internet goes down, Clinilog keeps working almost as usual: what you do is saved on the PC and uploads by itself when the connection returns. You don't need to switch anything on.</p>
+
+<h3>Set up each PC once, while online</h3>
+<p>A PC can only work offline after it has downloaded the school's records once. Do this on every clinic PC after installing or updating Clinilog:</p>
+<ol class="steps">
+  <li>Make sure the PC is connected to the internet.</li>
+  <li>Open Clinilog and log in with <b>any</b> account of your school.</li>
+  <li>Wait until the connection card in the sidebar shows <b>"Records updated"</b> with a date and time. This usually takes less than a minute.</li>
+</ol>
+<p>That's all. From then on, the PC downloads what changed on the other PCs about every 30 seconds whenever it's online and someone is logged in. That includes new students, visits, sections, medicines and user accounts. The copy stays on the PC when you log out or close Clinilog, and it's encrypted, so it can only be read through Clinilog.</p>
+
+<h3>The connection card</h3>
 <div class="two keep">
-  <figure><img src="img/02-sync-card-online.png" alt="" /><figcaption>Connected.</figcaption></figure>
-  <figure><img src="img/13-sync-card-offline.png" alt="" /><figcaption>No connection: 1 visit is waiting.</figcaption></figure>
+  <figure><img src="img/02-sync-card-online.png" alt="" /><figcaption>Online: everything is uploaded.</figcaption></figure>
+  <figure><img src="img/13-sync-card-offline.png" alt="" /><figcaption>Offline: 2 changes are waiting to upload.</figcaption></figure>
 </div>
-<p>The <b>connection card</b> at the bottom of the sidebar shows whether Clinilog can reach the server and how many of <i>your</i> visits are waiting to upload. <span class="ui">Sync now</span> checks again immediately.</p>
-<figure><img src="img/13-offline-top.png" alt="" /><figcaption>While offline, a yellow banner explains it, and saved visits wait in <i>Waiting to upload</i>.</figcaption></figure>
+<ul>
+  <li><b>Online / Offline</b>: whether Clinilog can reach the server right now.</li>
+  <li><b>All changes uploaded</b> or <b>N changes waiting to upload</b>: your changes that haven't reached the server yet. <b>Need attention</b> in red means the server refused one (see below).</li>
+  <li><b>From other staff</b>: changes another person made on this PC. They upload when that person logs in here while online.</li>
+  <li><b>Records updated …</b>: when this PC last downloaded the latest records.</li>
+  <li><span class="ui">Sync now</span>: checks the connection, uploads and downloads straight away instead of waiting.</li>
+</ul>
+
+<h3>Logging in without internet</h3>
+<figure><img src="img/13-login-offline.png" alt="" /><figcaption>No internet: the login screen says so straight away, and you can still log in.</figcaption></figure>
+<ol class="steps">
+  <li>The login screen shows <b>"You're offline"</b> right away. There's nothing to wait for.</li>
+  <li>Type your username and password as usual, and click <span class="ui">Log in</span>.</li>
+</ol>
+<ul>
+  <li>This works for <b>every active account of your school</b>, even one that has never been used on this PC, as long as the PC was set up once while online.</li>
+  <li>If it says <b>"this account isn't saved on this PC yet"</b>, the PC hasn't been set up. Connect it to the internet and log in once.</li>
+  <li>A new account or a password reset reaches each PC the next time that PC is online. Until then, an offline PC still expects the old password, and a brand-new account can't log in on it yet.</li>
+  <li>A disabled account stops working on each PC the next time that PC is online.</li>
+  <li>5 wrong passwords lock the login for 5 minutes, the same as online.</li>
+  <li>When the internet comes back, the login screen notices by itself within about 10 seconds.</li>
+</ul>
 
 <h3>What works offline</h3>
+<table>
+  <tr><th style="width:50%">Works offline</th><th>Needs the internet</th></tr>
+  <tr>
+    <td><ul style="margin:0">
+      <li>Dashboard</li>
+      <li>Students: search, view, add, edit (and delete, for admins)</li>
+      <li>Clinic Visits: record, view, edit, delete</li>
+      <li>Search</li>
+      <li>Reports, including <span class="ui">Print</span> and <span class="ui">Save as PDF</span></li>
+      <li>Settings: sections and medicines (admins)</li>
+    </ul></td>
+    <td><ul style="margin:0">
+      <li>User Accounts: adding, disabling or resetting passwords. Offline, admins see the last copy, view-only.</li>
+      <li>Activity Log: offline, admins see the last copy.</li>
+      <li>Subscription and payments</li>
+    </ul></td>
+  </tr>
+</table>
+<p>Offline, Clinilog checks everything the same way the server does: the same field rules, duplicate-LRN warnings and permissions.</p>
+
+<h3>While you're offline</h3>
+<figure><img src="img/13-offline-top.png" alt="" /><figcaption>Offline: a yellow banner explains it, and your changes are listed under <i>Waiting to upload</i>.</figcaption></figure>
 <ul>
-  <li><b>Recording new visits</b>: they are saved on the PC (encrypted) and upload automatically when the connection returns, keeping the time they were recorded and the nurse who recorded them.</li>
-  <li><b>Choosing students and medicines</b> in the New visit form: Clinilog searches a copy of the lists saved on the PC.</li>
-  <li>Other pages (Students, Reports, Search, admin pages) need the server and show a connection message until it's back.</li>
+  <li>A yellow banner at the top says you're offline and when the records were last updated.</li>
+  <li>Whatever you save shows up right away in the lists, and also under <b>Waiting to upload</b> on the Dashboard and the Clinic Visits page.</li>
+  <li>Visits keep the date and time they were recorded, and the name of the nurse who recorded them.</li>
+  <li>Changes made on other PCs while you're offline don't show until this PC is back online.</li>
 </ul>
-<h3>Logging in while offline</h3>
-<p>You can log in without internet <b>only</b> if your account has logged in on that PC while online before, and you did not log out since (closing the app is fine). If you log out, the saved lists are cleared and your next login needs the internet.</p>
+
 <h3>When the connection returns</h3>
 <ul>
-  <li>Waiting visits upload by themselves within about 30 seconds, or click <span class="ui">Upload now</span> / <span class="ui">Sync now</span>.</li>
-  <li>If the server can't accept a visit (for example the student was deleted meanwhile), it is marked <b>needs attention</b> with the reason. Fix the cause and click <span class="ui">Try again</span>, or <span class="ui">Discard</span> it.</li>
-  <li>Visits recorded by another nurse on the same PC upload when that nurse logs in again, so each visit stays credited to the right person.</li>
+  <li>Waiting changes upload by themselves within about 30 seconds, in the order they were made. To do it straight away, click <span class="ui">Sync now</span> on the card or <span class="ui">Upload now</span> in the Waiting to upload box.</li>
+  <li>The yellow banner disappears, the card shows <b>All changes uploaded</b>, and changes made on other PCs download.</li>
+  <li>If the server can't accept a change, it is marked <b>needs attention</b> with the reason. For example, the student was deleted on another PC, or another PC used the same LRN in the meantime. Fix the cause, then click <span class="ui">Try again</span>, or <span class="ui">Discard</span> it.</li>
+  <li>If two PCs changed the same record while offline, the change that uploads last is the one kept.</li>
 </ul>
-<div class="box note"><p><span class="label">Keep waiting visits safe.</span> Before logging out or closing, check the card. Clinilog asks first if visits are waiting; they are never thrown away, but they only upload when the person who recorded them is logged in and online.</p></div>
-<p>If the server can't be reached at all, Clinilog keeps using your school's last known plan for up to <b>7 days</b>. After that it becomes view-only until it reconnects.</p>
+<div class="box note"><p><span class="label">Changes are never lost by logging out or closing Clinilog.</span> They stay on the PC, but they only upload when the person who made them logs in on that PC while online, so each change is credited to the right person. If you work offline, log in again once the internet is back.</p></div>
+<p>If the server can't be reached at all, Clinilog keeps using your school's last known plan for up to <b>7 days</b>. After that, records are view-only until the PC reconnects.</p>
 
 <!-- ===================== 15 ===================== -->
 <h2 id="s15"><span class="num">15.</span>Plans, limits and an expired subscription <span class="who all">ALL USERS</span></h2>
@@ -492,7 +553,7 @@
   <tr><td>Search</td><td class="c">Name / LRN and section</td><td class="c">+ grade, date range and complaint words</td></tr>
   <tr><td>Reports</td><td class="c">Visits per month, most common complaints</td><td class="c">+ by grade &amp; section, medicine usage, frequent visitors</td></tr>
   <tr><td>Server backups</td><td class="c">Weekly</td><td class="c">Daily</td></tr>
-  <tr><td>Price (GCash)</td><td class="c">₱150 / month · ₱1,300 / year</td><td class="c">₱300 / month · ₱3,600 / year</td></tr>
+  <tr><td>Price (GCash, one-time payment for 1 year)</td><td class="c">₱150 first payment, then ₱1,800</td><td class="c">₱300 first payment, then ₱3,600</td></tr>
 </table>
 <p>Premium-only items stay <b>visible but locked</b> on Basic, marked with a lock and a <b>Premium</b> badge. Clicking one explains what Premium adds.</p>
 <h3>If the subscription or free trial expires</h3>
@@ -526,7 +587,10 @@
 <h2 id="s17"><span class="num">17.</span>Troubleshooting and questions <span class="who all">ALL USERS</span></h2>
 <table>
   <tr><th style="width:36%">What you see</th><th>What to do</th></tr>
-  <tr><td>"Connecting to server…" for a long time</td><td>The server wakes up the first time each day; wait up to about a minute. If it then says it can't reach the server, check the PC's internet and click <span class="ui">Try again</span>.</td></tr>
+  <tr><td>"Connecting to server…" for a long time</td><td>The server wakes up the first time each day; wait up to about a minute. If it then says it can't reach the server, check the PC's internet and click <span class="ui">Try again</span>. You can still log in offline meanwhile.</td></tr>
+  <tr><td>"You're offline" on the login screen</td><td>The PC has no internet. You can still log in and work (section 14). The message clears by itself when the internet is back.</td></tr>
+  <tr><td>Offline: "this account isn't saved on this PC yet"</td><td>This PC has never downloaded the school's records, or the account was added after its last download. Connect the PC to the internet and log in once.</td></tr>
+  <tr><td>Offline: the right password is refused</td><td>The password was changed or reset, and this PC hasn't been online since. Use the old password, or connect the PC to the internet first.</td></tr>
   <tr><td>"Too many failed attempts"</td><td>Wait for the countdown (5 minutes), or ask an administrator to reset your password.</td></tr>
   <tr><td>Forgot password</td><td>Ask an administrator: User Accounts → <span class="ui">Reset password</span>.</td></tr>
   <tr><td>"Your account is no longer active"</td><td>An administrator disabled your account. Ask them to enable it.</td></tr>
@@ -543,8 +607,8 @@
   <tr><td>Paid, but the plan hasn't changed</td><td>The payment is still <b>waiting for review</b>; the plan changes once it's approved. If it says <b>Not approved</b>, read the reason, then send the correct reference number and receipt again.</td></tr>
   <tr><td>"This reference number was already sent"</td><td>Each GCash reference can be used once. Check you typed the number from <i>this</i> payment's receipt.</td></tr>
   <tr><td>Add student / Add user is unavailable</td><td>The plan limit is reached (500 students or 2 accounts on Basic), or the subscription has expired.</td></tr>
-  <tr><td>Visits stay in "Waiting to upload"</td><td>Check the internet, then <span class="ui">Upload now</span>. If one says it needs attention, read the reason, then <span class="ui">Try again</span> or <span class="ui">Discard</span>.</td></tr>
-  <tr><td>"Your password or account changed since you logged in"</td><td>Log out and log in again with your current password. Waiting visits are kept and will upload.</td></tr>
+  <tr><td>Changes stay in "Waiting to upload"</td><td>Check the internet, then <span class="ui">Upload now</span>. If one says it needs attention, read the reason, then <span class="ui">Try again</span> or <span class="ui">Discard</span>.</td></tr>
+  <tr><td>"Your password or account changed since you logged in"</td><td>Log out and log in again with your current password. Waiting changes are kept and will upload.</td></tr>
   <tr><td>"Windows protected your PC" when installing</td><td>Click <span class="ui">More info</span> → <span class="ui">Run anyway</span>.</td></tr>
 </table>
 
@@ -576,7 +640,7 @@
       <li>Student's history: Students → click the name.</li>
       <li>Fix your visit: open it → <span class="ui">Edit</span>.</li>
       <li>Monthly summary: Reports → month → <span class="ui">Print</span> / <span class="ui">Save as PDF</span>.</li>
-      <li>Offline? Keep recording visits; check the sidebar card later.</li>
+      <li>Offline? Keep working as usual; changes upload by themselves. Check the sidebar card later.</li>
       <li>Leaving the PC: <span class="ui">Log out</span>.</li>
     </ul>
   </div>
@@ -586,6 +650,7 @@
       <li><b>New nurse:</b> User Accounts → <span class="ui">Add user</span> → Role: Staff.</li>
       <li><b>Forgotten password / locked out:</b> User Accounts → <span class="ui">Reset password</span>.</li>
       <li><b>Someone leaves:</b> User Accounts → <span class="ui">Disable</span>.</li>
+      <li><b>New clinic PC:</b> install, enter the school code, log in once while online.</li>
       <li><b>New school year sections:</b> Settings → Sections.</li>
       <li><b>New medicine in stock:</b> Settings → Medicines.</li>
       <li><b>Wrong visit:</b> open it → <span class="ui">Delete</span>, then record it again.</li>

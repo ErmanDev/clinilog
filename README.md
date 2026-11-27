@@ -88,7 +88,7 @@ Search rules:
 - On a Basic plan, any Premium-only filter gets a `403` with `code: "premium_required"`.
 
 Subscriptions (paid by GCash, approved by the superadmin):
-- **Prices.** Constants in `server/src/subscription.rs` (`price_php`): Basic ₱150/month or ₱1,300/year, Premium ₱300/month or ₱3,600/year. The app shows whatever the server sends.
+- **Prices.** Constants in `server/src/subscription.rs` (`price_php`). Every payment is a one-time payment for 1 year. A school's first payment is Basic ₱150 or Premium ₱300; every payment after that (renewing or changing plan) is Basic ₱1,800 or Premium ₱3,600. "First" means the school has no approved payment yet, decided when the request is sent. The app shows whatever the server sends. Requests from app versions that still send a `term` are refused with a message to update the app.
 - **Paying.** The admin scans the InstaPay QR (`server/assets/gcash-qr.png`, served by `GET /subscription/plans`) with GCash and pays. Then they send `POST /subscription/requests` with `{ plan, term, reference_no, receipt_image }`. Both the reference number and the receipt screenshot are required.
 - **Nothing changes yet.** The request waits as `pending`. A school can have only one pending request, and the admin can cancel it with `POST /subscription/requests/{id}/cancel`. `GET /subscription/requests` lists the school's history.
 - **Checks.** The reference number is stored as letters and digits only, in upper case, and must be 6–30 characters. A reference on a pending or approved request can't be used again. The receipt must really be a PNG, JPG or WEBP (checked from its bytes) and at most 3 MB. The app shrinks photos before sending.

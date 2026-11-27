@@ -337,12 +337,18 @@ export const reportsApi = {
 
 // ---------- Subscription payments (GCash, reviewed by the superadmin) ----------
 
+/** How long a payment covers: always "yearly" (1 year) now; "monthly" only on old requests. */
 export type Term = "monthly" | "yearly";
 
 export interface PlanOption {
   plan: PlanName;
-  monthly_php: number;
-  yearly_php: number;
+  /** What this school pays now: a one-time payment for `months` months. */
+  price_php: number;
+  /** The price after the school's first payment (renewals and plan changes). */
+  renewal_php: number;
+  /** The school hasn't paid before, so `price_php` is the first-payment price. */
+  first_payment: boolean;
+  months: number;
   limits: { max_students: number | null; max_users: number };
   features: Features;
 }
@@ -384,7 +390,7 @@ export const subscriptionApi = {
   plans: () => request<PlansResponse>("GET", "subscription/plans"),
   requests: () => request<PaymentRequest[]>("GET", "subscription/requests"),
   /** `receipt_image` is a data URL. The plan starts only after the superadmin approves. */
-  submit: (input: { plan: PlanName; term: Term; reference_no: string; receipt_image: string }) =>
+  submit: (input: { plan: PlanName; reference_no: string; receipt_image: string }) =>
     request<PaymentRequest>("POST", "subscription/requests", input),
   cancel: (id: string) => request<PaymentRequest>("POST", `subscription/requests/${encodeURIComponent(id)}/cancel`),
 };

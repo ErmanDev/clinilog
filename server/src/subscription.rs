@@ -201,7 +201,13 @@ pub async fn get(State(state): State<AppState>, user: AuthUser) -> AppResult<Jso
 // Payment is manual: the admin pays by GCash (InstaPay QR), then sends the reference
 // number and a receipt screenshot (see `payments.rs`). The plan only starts once the
 // superadmin approves the request.
+//
+// Every payment is a one-time payment for 1 year. A school's first payment is at the
+// introductory price; every payment after that (renewing or changing plan) is at the
+// regular price.
 
+/// How long a payment request covers. New requests are always `Yearly` (1 year);
+/// `Monthly` only appears on requests made before one-time payments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "lowercase")]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
@@ -210,23 +216,29 @@ pub enum Term {
     Yearly,
 }
 
-impl Term {
-    fn months(self) -> u32 {
-        match self {
-            Term::Monthly => 1,
-            Term::Yearly => 12,
-        }
+/// Months one payment covers.
+pub const PLAN_MONTHS: u32 = 12;
+
+/// Prices in Philippine pesos. Change them here; the app shows whatever the server sends.
+/// `first` = the school's first payment (introductory price).
+pub fn price_php(plan: Plan, first: bool) -> i32 {
+    match (plan, first) {
+        (Plan::Basic, true) => 150,
+        (Plan::Premium, true) => 300,
+        (Plan::Basic, false) => 1_800,
+        (Plan::Premium, false) => 3_600,
     }
 }
 
-/// Prices in Philippine pesos. Change them here; the app shows whatever the server sends.
-pub fn price_php(plan: Plan, term: Term) -> i32 {
-    match (plan, term) {
-        (Plan::Basic, Term::Monthly) => 150,
-        (Plan::Basic, Term::Yearly) => 1_300,
-        (Plan::Premium, Term::Monthly) => 300,
-        (Plan::Premium, Term::Yearly) => 3_600,
-    }
+/// True until a payment of the school's has been approved.
+pub async fn is_first_payment<'e>(db: impl sqlx::PgExecutor<'e>, school_id: Uuid) -> AppResult<bool> {
+    let paid: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM subscription_requests WHERE school_id = $1 AND status = 'approved')",
+    )
+    .bind(school_id)
+    .fetch_one(db)
+    .await?;
+    Ok(!paid)
 }
 
 /// The InstaPay QR admins scan with GCash.
@@ -237,8 +249,13 @@ const GCASH_ACCOUNT_NAME: &str = "MI*****E G.";
 #[derive(Serialize)]
 pub struct PlanOption {
     pub plan: Plan,
-    pub monthly_php: i32,
-    pub yearly_php: i32,
+    /// What this school pays now for 1 year.
+    pub price_php: i32,
+    /// The price after the first payment (renewals and plan changes).
+    pub renewal_php: i32,
+    /// This school hasn't paid before, so `price_php` is the introductory price.
+    pub first_payment: bool,
+    pub months: u32,
     pub limits: Limits,
     pub features: Features,
 }
@@ -265,15 +282,18 @@ fn qr_data_url() -> String {
         .clone()
 }
 
-/// `GET /subscription/plans` (admin) — prices, limits, features and the GCash QR.
-pub async fn plans(_user: AuthUser) -> Json<PlansResponse> {
-    Json(PlansResponse {
+/// `GET /subscription/plans` (admin) — this school's prices, limits, features and the GCash QR.
+pub async fn plans(State(state): State<AppState>, user: AuthUser) -> AppResult<Json<PlansResponse>> {
+    let first = is_first_payment(&state.db, user.school_id).await?;
+    Ok(Json(PlansResponse {
         plans: [Plan::Basic, Plan::Premium]
             .into_iter()
             .map(|p| PlanOption {
                 plan: p,
-                monthly_php: price_php(p, Term::Monthly),
-                yearly_php: price_php(p, Term::Yearly),
+                price_php: price_php(p, first),
+                renewal_php: price_php(p, false),
+                first_payment: first,
+                months: PLAN_MONTHS,
                 limits: p.limits(),
                 features: p.features(),
             })
@@ -284,7 +304,7 @@ pub async fn plans(_user: AuthUser) -> Json<PlansResponse> {
             account_name: GCASH_ACCOUNT_NAME,
             qr_image: qr_data_url(),
         },
-    })
+    }))
 }
 
 #[derive(Debug, Serialize)]
@@ -302,6 +322,7 @@ pub struct Applied {
 ///
 /// Same plan while still active: extends from the day after it ends.
 /// Different plan, expired, or none: starts today and ends the old plan.
+/// `term` is `Yearly` (1 year) except on requests made before one-time payments.
 pub async fn apply_plan(
     tx: &mut sqlx::PgConnection,
     db: &PgPool,
@@ -309,6 +330,10 @@ pub async fn apply_plan(
     plan: Plan,
     term: Term,
 ) -> AppResult<Applied> {
+    let months = match term {
+        Term::Monthly => 1,
+        Term::Yearly => PLAN_MONTHS,
+    };
     let cur = current(db, school_id).await?;
     let today = crate::validate::today_ph();
     let (start, kind) = match (cur.read_only, cur.end_date) {
@@ -317,7 +342,7 @@ pub async fn apply_plan(
         _ => (today, "new"),
     };
     let end = start
-        .checked_add_months(chrono::Months::new(term.months()))
+        .checked_add_months(chrono::Months::new(months))
         .and_then(|d| d.pred_opt())
         .ok_or_else(|| crate::error::AppError::BadRequest("Date out of range.".into()))?;
 
@@ -346,10 +371,10 @@ mod tests {
 
     #[test]
     fn prices() {
-        assert_eq!(price_php(Plan::Basic, Term::Monthly), 150);
-        assert_eq!(price_php(Plan::Basic, Term::Yearly), 1_300);
-        assert_eq!(price_php(Plan::Premium, Term::Monthly), 300);
-        assert_eq!(price_php(Plan::Premium, Term::Yearly), 3_600);
+        assert_eq!(price_php(Plan::Basic, true), 150);
+        assert_eq!(price_php(Plan::Premium, true), 300);
+        assert_eq!(price_php(Plan::Basic, false), 1_800);
+        assert_eq!(price_php(Plan::Premium, false), 3_600);
     }
 
     #[test]
